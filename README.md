@@ -1,10 +1,37 @@
 # rperf3-rs
 
-A high-performance network throughput testing tool written in Rust, inspired by iperf3.
-
 [![CI](https://github.com/arunkumar-mourougappane/rperf3-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/arunkumar-mourougappane/rperf3-rs/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+
+**rperf3-rs** is a network throughput measurement tool written in Rust, inspired by iperf3. It aims to provide bandwidth testing for TCP and UDP protocols with a focus on memory safety, async I/O, and ease of use both as a command-line tool and as a library.
+
+## What is rperf3-rs?
+
+rperf3-rs allows you to measure the maximum achievable bandwidth between two network endpoints. Whether you're diagnosing network performance issues, validating infrastructure upgrades, or benchmarking network equipment, rperf3-rs provides detailed, real-time statistics about your network's capabilities.
+
+Built from the ground up in Rust, rperf3-rs leverages modern async I/O (via Tokio) to achieve high throughput while maintaining memory safety guarantees. Unlike traditional C-based tools, rperf3-rs eliminates entire classes of bugs (buffer overflows, use-after-free, data races) through Rust's compile-time checks.
+
+### Key Capabilities
+
+- **Accurate Bandwidth Measurement**: Measure TCP and UDP throughput with sub-second interval reporting
+- **Bidirectional Testing**: Test both normal mode (client → server) and reverse mode (server → client)
+- **Detailed TCP Statistics**: On Linux, get comprehensive TCP metrics including retransmits, RTT, congestion window, and PMTU
+- **UDP Metrics**: Track packet loss, jitter, and out-of-order packets for UDP flows
+- **Dual Interface**: Use as a standalone CLI tool or integrate as a Rust library with full async support
+- **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
+- **JSON Output**: Machine-readable output compatible with automation and monitoring systems
+- **Cross-Platform**: Native support for Linux, macOS, and Windows across multiple architectures
+
+### Why rperf3-rs?
+
+**Performance**: Built on Tokio's async runtime with zero-copy buffer management, rperf3-rs achieves 25-30 Gbps throughput on localhost tests.
+
+**Safety**: Rust's ownership system eliminates memory safety bugs at compile time, making rperf3-rs more reliable than C-based alternatives.
+
+**Developer-Friendly**: Clean API design with builder patterns, comprehensive error handling, and extensive documentation make integration straightforward.
+
+**Modern Architecture**: Async/await syntax, modular design, and thread-safe statistics collection provide a solid foundation for network testing applications.
 
 ## Features
 
