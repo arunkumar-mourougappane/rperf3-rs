@@ -18,6 +18,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.0] - 2025-12-02
+
+### Added
+
+- **Documentation Improvements**:
+  - Comprehensive CHANGELOG.md with proper version history
+  - All versions now documented in reverse chronological order
+  - Detailed release notes for each version with categorized changes
+
+### Changed
+
+- **Version**: Bumped from 0.2.0 to 0.3.0
+- **CHANGELOG**: Restructured to follow Keep a Changelog format strictly
+  - Moved v0.2.0 features from Unreleased to proper release section
+  - Added all commits and changes since initial release
+  - Organized changes into Added, Changed, Fixed, Removed categories
+
+### Documentation
+
+- Updated CHANGELOG with complete version history
+- Proper semantic versioning documentation
+- Clear separation between releases and unreleased features
+
 ## [0.2.0] - 2025-12-02
 
 ### Added
