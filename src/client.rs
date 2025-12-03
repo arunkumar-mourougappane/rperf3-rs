@@ -12,30 +12,128 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::time;
 
-/// Progress event types
+/// Progress event types reported during test execution.
+///
+/// These events allow monitoring of test progress in real-time through callbacks.
+/// Events are emitted for test lifecycle stages and periodic updates.
+///
+/// # Examples
+///
+/// ```no_run
+/// use rperf3::{Client, Config, ProgressEvent};
+/// use std::time::Duration;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::client("127.0.0.1".to_string(), 5201)
+///     .with_duration(Duration::from_secs(10));
+///
+/// let client = Client::new(config)?
+///     .with_callback(|event: ProgressEvent| {
+///         match event {
+///             ProgressEvent::TestStarted => println!("Starting..."),
+///             ProgressEvent::IntervalUpdate { bits_per_second, .. } => {
+///                 println!("Speed: {:.2} Mbps", bits_per_second / 1_000_000.0);
+///             }
+///             ProgressEvent::TestCompleted { total_bytes, .. } => {
+///                 println!("Transferred {} bytes", total_bytes);
+///             }
+///             ProgressEvent::Error(msg) => eprintln!("Error: {}", msg),
+///         }
+///     });
+///
+/// client.run().await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
-    /// Test is starting
+    /// Test is starting.
+    ///
+    /// This event is emitted once at the beginning of test execution.
     TestStarted,
-    /// Interval update with statistics
+    /// Interval update with statistics.
+    ///
+    /// Emitted periodically (based on the interval configuration) with
+    /// cumulative statistics for the current interval.
+    ///
+    /// # Fields
+    ///
+    /// * `interval_start` - Start time of this interval relative to test start
+    /// * `interval_end` - End time of this interval relative to test start
+    /// * `bytes` - Number of bytes transferred during this interval
+    /// * `bits_per_second` - Throughput in bits per second for this interval
     IntervalUpdate {
         interval_start: Duration,
         interval_end: Duration,
         bytes: u64,
         bits_per_second: f64,
     },
-    /// Test completed with final measurements
+    /// Test completed with final measurements.
+    ///
+    /// Emitted once at the end of a successful test with total statistics.
+    ///
+    /// # Fields
+    ///
+    /// * `total_bytes` - Total bytes transferred during the entire test
+    /// * `duration` - Actual test duration
+    /// * `bits_per_second` - Average throughput over the entire test
     TestCompleted {
         total_bytes: u64,
         duration: Duration,
         bits_per_second: f64,
     },
-    /// Error occurred
+    /// Error occurred during test execution.
+    ///
+    /// Contains a descriptive error message. After this event, the test
+    /// will typically terminate.
     Error(String),
 }
 
-/// Callback trait for receiving progress updates
+/// Callback trait for receiving progress updates during test execution.
+///
+/// Implement this trait to receive real-time notifications about test progress.
+/// The trait is automatically implemented for any function or closure with the
+/// correct signature.
+///
+/// # Examples
+///
+/// ## Using a Closure
+///
+/// ```no_run
+/// use rperf3::{Client, Config, ProgressEvent};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::client("127.0.0.1".to_string(), 5201);
+/// let client = Client::new(config)?
+///     .with_callback(|event| {
+///         println!("Event: {:?}", event);
+///     });
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Custom Implementation
+///
+/// ```
+/// use rperf3::ProgressCallback;
+/// use rperf3::ProgressEvent;
+///
+/// struct MyCallback;
+///
+/// impl ProgressCallback for MyCallback {
+///     fn on_progress(&self, event: ProgressEvent) {
+///         // Custom handling
+///     }
+/// }
+/// ```
 pub trait ProgressCallback: Send + Sync {
+    /// Called when a progress event occurs.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The progress event that occurred
     fn on_progress(&self, event: ProgressEvent);
 }
 
@@ -51,7 +149,60 @@ where
 
 type CallbackRef = Arc<dyn ProgressCallback>;
 
-/// Client instance
+/// Network performance test client.
+///
+/// The `Client` is responsible for connecting to a server and running network
+/// performance tests. It supports TCP and UDP protocols, reverse mode testing,
+/// and provides real-time progress updates through callbacks.
+///
+/// # Examples
+///
+/// ## Basic TCP Test
+///
+/// ```no_run
+/// use rperf3::{Client, Config, Protocol};
+/// use std::time::Duration;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::client("192.168.1.100".to_string(), 5201)
+///     .with_protocol(Protocol::Tcp)
+///     .with_duration(Duration::from_secs(10));
+///
+/// let client = Client::new(config)?;
+/// client.run().await?;
+///
+/// let measurements = client.get_measurements();
+/// println!("Average throughput: {:.2} Mbps",
+///          measurements.total_bits_per_second() / 1_000_000.0);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## With Progress Callback
+///
+/// ```no_run
+/// use rperf3::{Client, Config, ProgressEvent};
+/// use std::time::Duration;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::client("127.0.0.1".to_string(), 5201);
+///
+/// let client = Client::new(config)?
+///     .with_callback(|event: ProgressEvent| {
+///         match event {
+///             ProgressEvent::IntervalUpdate { bits_per_second, .. } => {
+///                 println!("{:.2} Mbps", bits_per_second / 1_000_000.0);
+///             }
+///             _ => {}
+///         }
+///     });
+///
+/// client.run().await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Client {
     config: Config,
     measurements: MeasurementsCollector,
@@ -59,6 +210,24 @@ pub struct Client {
 }
 
 impl Client {
+    /// Creates a new client with the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The test configuration. Must have a server address set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration doesn't have a server address set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::{Client, Config};
+    ///
+    /// let config = Config::client("127.0.0.1".to_string(), 5201);
+    /// let client = Client::new(config).expect("Failed to create client");
+    /// ```
     pub fn new(config: Config) -> Result<Self> {
         if config.server_addr.is_none() {
             return Err(Error::Config(
@@ -73,7 +242,34 @@ impl Client {
         })
     }
 
-    /// Set a progress callback to receive updates during test execution
+    /// Attaches a progress callback to receive real-time test updates.
+    ///
+    /// The callback will be invoked for each progress event during test execution,
+    /// including test start, interval updates, completion, and errors.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - A function or closure that implements `ProgressCallback`
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Client, Config, ProgressEvent};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::client("127.0.0.1".to_string(), 5201);
+    /// let client = Client::new(config)?
+    ///     .with_callback(|event: ProgressEvent| {
+    ///         println!("Progress: {:?}", event);
+    ///     });
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_callback<C: ProgressCallback + 'static>(mut self, callback: C) -> Self {
         self.callback = Some(Arc::new(callback));
         self
@@ -86,7 +282,35 @@ impl Client {
         }
     }
 
-    /// Run the client test
+    /// Runs the network performance test.
+    ///
+    /// This method connects to the server and executes the configured test.
+    /// It will block until the test completes or an error occurs.
+    ///
+    /// Progress events are emitted through the callback (if set) during execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Cannot connect to the server
+    /// - Network communication fails
+    /// - Protocol errors occur
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Client, Config};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::client("127.0.0.1".to_string(), 5201);
+    /// let client = Client::new(config)?;
+    ///
+    /// client.run().await?;
+    /// println!("Test completed successfully");
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run(&self) -> Result<()> {
         let server_addr = self
             .config
@@ -377,6 +601,34 @@ impl Client {
         Ok(())
     }
 
+    /// Retrieves the measurements collected during the test.
+    ///
+    /// This method should be called after `run()` completes to get the final
+    /// test statistics including throughput, bytes transferred, and timing information.
+    ///
+    /// # Returns
+    ///
+    /// A `Measurements` struct containing all test statistics.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Client, Config};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::client("127.0.0.1".to_string(), 5201);
+    /// let client = Client::new(config)?;
+    ///
+    /// client.run().await?;
+    ///
+    /// let measurements = client.get_measurements();
+    /// println!("Throughput: {:.2} Mbps",
+    ///          measurements.total_bits_per_second() / 1_000_000.0);
+    /// println!("Bytes sent: {}", measurements.total_bytes_sent);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn get_measurements(&self) -> crate::Measurements {
         self.measurements.get()
     }

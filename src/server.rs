@@ -9,13 +9,65 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::time;
 
-/// Server instance
+/// Network performance test server.
+///
+/// The `Server` listens for incoming client connections and handles performance
+/// test requests. It supports both TCP and UDP protocols and can handle multiple
+/// concurrent clients.
+///
+/// # Examples
+///
+/// ## Basic TCP Server
+///
+/// ```no_run
+/// use rperf3::{Server, Config};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::server(5201);
+/// let server = Server::new(config);
+///
+/// println!("Starting server on port 5201...");
+/// server.run().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## UDP Server on Custom Port
+///
+/// ```no_run
+/// use rperf3::{Server, Config, Protocol};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = Config::server(8080)
+///     .with_protocol(Protocol::Udp);
+///
+/// let server = Server::new(config);
+/// server.run().await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Server {
     config: Config,
     measurements: MeasurementsCollector,
 }
 
 impl Server {
+    /// Creates a new server with the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The server configuration including port and protocol
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::{Server, Config};
+    ///
+    /// let config = Config::server(5201);
+    /// let server = Server::new(config);
+    /// ```
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -23,7 +75,33 @@ impl Server {
         }
     }
 
-    /// Run the server
+    /// Starts the server and begins listening for client connections.
+    ///
+    /// This method will run indefinitely, accepting and handling client connections.
+    /// For TCP, each client connection is handled in a separate task. For UDP,
+    /// the server processes incoming datagrams.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Cannot bind to the specified port
+    /// - Network I/O errors occur
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Server, Config};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::server(5201);
+    /// let server = Server::new(config);
+    ///
+    /// println!("Server running...");
+    /// server.run().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run(&self) -> Result<()> {
         let bind_addr = format!(
             "{}:{}",
@@ -86,6 +164,26 @@ impl Server {
         }
     }
 
+    /// Retrieves the current measurements collected by the server.
+    ///
+    /// Returns a snapshot of the statistics collected from client tests.
+    ///
+    /// # Returns
+    ///
+    /// A `Measurements` struct containing test statistics.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::{Server, Config};
+    ///
+    /// let config = Config::server(5201);
+    /// let server = Server::new(config);
+    ///
+    /// // After tests have run
+    /// let measurements = server.get_measurements();
+    /// println!("Total bytes: {}", measurements.total_bytes_sent);
+    /// ```
     pub fn get_measurements(&self) -> crate::Measurements {
         self.measurements.get()
     }

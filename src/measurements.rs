@@ -282,6 +282,23 @@ pub struct IntervalStats {
 
 /// Complete test measurements
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Performance test measurements and statistics.
+///
+/// This structure holds all collected statistics from a network performance test,
+/// including per-stream data, interval statistics, and aggregate totals.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::Measurements;
+///
+/// let measurements = Measurements::new();
+///
+/// // After test completion
+/// let throughput_mbps = measurements.total_bits_per_second() / 1_000_000.0;
+/// println!("Average throughput: {:.2} Mbps", throughput_mbps);
+/// println!("Total transferred: {} bytes", measurements.total_bytes_sent);
+/// ```
 pub struct Measurements {
     pub streams: Vec<StreamStats>,
     pub intervals: Vec<IntervalStats>,
@@ -297,6 +314,16 @@ pub struct Measurements {
 }
 
 impl Measurements {
+    /// Creates a new empty measurements collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::Measurements;
+    ///
+    /// let measurements = Measurements::new();
+    /// assert_eq!(measurements.total_bytes_sent, 0);
+    /// ```
     pub fn new() -> Self {
         Self {
             streams: Vec::new(),
@@ -312,6 +339,27 @@ impl Measurements {
         }
     }
 
+    /// Calculates the average throughput in bits per second.
+    ///
+    /// Returns the total throughput based on bytes sent and test duration.
+    ///
+    /// # Returns
+    ///
+    /// Throughput in bits per second, or 0.0 if duration is zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::Measurements;
+    /// use std::time::Duration;
+    ///
+    /// let mut measurements = Measurements::new();
+    /// measurements.total_bytes_sent = 125_000_000; // 125 MB
+    /// measurements.set_duration(Duration::from_secs(10));
+    ///
+    /// let throughput = measurements.total_bits_per_second();
+    /// assert_eq!(throughput, 100_000_000.0); // 100 Mbps
+    /// ```
     pub fn total_bits_per_second(&self) -> f64 {
         if self.total_duration.as_secs_f64() > 0.0 {
             (self.total_bytes_sent as f64 * 8.0) / self.total_duration.as_secs_f64()
@@ -660,8 +708,24 @@ impl Default for MeasurementsCollector {
     }
 }
 
-/// Helper functions to gather system and connection information
-/// Get system information
+/// Retrieves system information for the current host.
+///
+/// Collects version, OS, architecture, hostname, and timestamp information.
+/// This is used in test output to document the environment where tests were run.
+///
+/// # Returns
+///
+/// A `SystemInfo` struct containing version, system details, and timestamp.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::measurements::get_system_info;
+///
+/// let info = get_system_info();
+/// println!("Running on: {}", info.system_info);
+/// println!("Version: {}", info.version);
+/// ```
 pub fn get_system_info() -> SystemInfo {
     SystemInfo {
         version: format!("rperf3 {}", env!("CARGO_PKG_VERSION")),
@@ -679,7 +743,39 @@ pub fn get_system_info() -> SystemInfo {
     }
 }
 
-/// Get connection information from a TcpStream
+/// Retrieves connection information from a TCP stream (Linux).
+///
+/// On Linux, this function extracts the file descriptor and connection details.
+/// The file descriptor is used for retrieving TCP statistics via socket options.
+///
+/// # Arguments
+///
+/// * `stream` - The TCP stream to extract connection information from
+///
+/// # Returns
+///
+/// A `ConnectionInfo` struct with socket FD, local/remote addresses and ports.
+///
+/// # Errors
+///
+/// Returns an error if socket addresses cannot be retrieved.
+///
+/// # Examples
+///
+/// ```no_run
+/// use tokio::net::TcpStream;
+/// use rperf3::measurements::get_connection_info;
+///
+/// # #[tokio::main]
+/// # async fn main() -> std::io::Result<()> {
+/// let stream = TcpStream::connect("127.0.0.1:5201").await?;
+/// let info = get_connection_info(&stream)?;
+/// println!("Connected: {}:{} -> {}:{}",
+///          info.local_host, info.local_port,
+///          info.remote_host, info.remote_port);
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(target_os = "linux")]
 pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<ConnectionInfo> {
     use std::os::unix::io::AsRawFd;
@@ -697,6 +793,23 @@ pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<Co
     })
 }
 
+/// Retrieves connection information from a TCP stream (non-Linux platforms).
+///
+/// On non-Linux platforms, this function extracts connection details but does not
+/// provide the file descriptor (returned as `None`).
+///
+/// # Arguments
+///
+/// * `stream` - The TCP stream to extract connection information from
+///
+/// # Returns
+///
+/// A `ConnectionInfo` struct with local/remote addresses and ports.
+/// The `socket_fd` field will be `None`.
+///
+/// # Errors
+///
+/// Returns an error if socket addresses cannot be retrieved.
 #[cfg(not(target_os = "linux"))]
 pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<ConnectionInfo> {
     let local_addr = stream.local_addr()?;
@@ -711,7 +824,48 @@ pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<Co
     })
 }
 
-/// Get TCP statistics from a socket (Linux only)
+/// Retrieves TCP statistics from a socket (Linux only).
+///
+/// Uses the Linux `TCP_INFO` socket option to extract detailed TCP statistics
+/// including retransmits, congestion window, RTT, RTT variance, and PMTU.
+///
+/// This information is valuable for diagnosing network performance issues and
+/// understanding TCP behavior during tests.
+///
+/// # Arguments
+///
+/// * `stream` - The TCP stream to extract statistics from
+///
+/// # Returns
+///
+/// A `TcpStats` struct with retransmit count, congestion window, RTT metrics,
+/// and path MTU. Returns default (zero) values if statistics cannot be retrieved.
+///
+/// # Platform Support
+///
+/// This function only provides meaningful data on Linux. On other platforms,
+/// use the non-Linux version which returns default values.
+///
+/// # Examples
+///
+/// ```no_run
+/// use tokio::net::TcpStream;
+/// use rperf3::measurements::get_tcp_stats;
+///
+/// # #[tokio::main]
+/// # async fn main() -> std::io::Result<()> {
+/// let stream = TcpStream::connect("127.0.0.1:5201").await?;
+/// let stats = get_tcp_stats(&stream)?;
+///
+/// if let Some(cwnd) = stats.snd_cwnd {
+///     println!("Congestion window: {} bytes", cwnd);
+/// }
+/// if let Some(rtt) = stats.rtt {
+///     println!("RTT: {} μs", rtt);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(target_os = "linux")]
 pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats> {
     use std::mem;
@@ -791,6 +945,24 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
     }
 }
 
+/// Retrieves TCP statistics from a socket (non-Linux platforms).
+///
+/// On platforms other than Linux, detailed TCP statistics are not available.
+/// This function returns a default `TcpStats` struct with all fields set to
+/// zero or `None`.
+///
+/// # Arguments
+///
+/// * `_stream` - The TCP stream (unused on non-Linux platforms)
+///
+/// # Returns
+///
+/// A default `TcpStats` struct with no statistics.
+///
+/// # Platform Support
+///
+/// For detailed TCP statistics, use Linux. On macOS, Windows, and other
+/// platforms, this function provides no useful data.
 #[cfg(not(target_os = "linux"))]
 pub fn get_tcp_stats(_stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats> {
     Ok(TcpStats::default())
