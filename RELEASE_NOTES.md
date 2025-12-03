@@ -1,10 +1,237 @@
-# Release Notes - Version 0.3.6
+# Release Notes - Version 0.3.7
 
 **Release Date:** December 2, 2025
 
 ## Overview
 
-Version 0.3.6 fixes the aarch64 (ARM64 GNU) build failure in GitHub Actions by properly configuring the cross-compilation linker. This completes the cross-compilation infrastructure improvements started in v0.3.5, ensuring all 11 platform variants build successfully in CI/CD.
+Version 0.3.7 fixes Windows build failures by correcting the cross-rs usage to Linux-only targets. This release resolves the issue where cross-rs was incorrectly applied to Windows targets (i686 and ARM64), which it doesn't support. All Windows builds now use the native MSVC toolchain, completing the build infrastructure improvements.
+
+## Critical Fix: Windows Build System
+
+### What Was Broken
+
+The v0.3.6 release workflow failed for Windows i686 target:
+- **Job 56985371251 failed** with cross-rs error
+- Attempted to use cross-rs for `i686-pc-windows-msvc`
+- Error: "cross does not provide a Docker image for target i686-pc-windows-msvc"
+- cross-rs only supports Linux cross-compilation targets
+
+### The Problem
+
+The workflow logic was too broad:
+```yaml
+# Incorrect - applies to ALL i686 targets including Windows
+if: contains(matrix.target, 'i686')
+  run: cross build --target i686-pc-windows-msvc  # ❌ Fails
+```
+
+cross-rs is a Linux-focused tool that:
+- Provides Docker images for Linux cross-compilation
+- Does NOT support Windows or macOS targets
+- Cannot cross-compile to Windows from any platform
+
+### The Solution
+
+Restricted cross-rs to Linux targets only:
+```yaml
+# Correct - Linux targets only
+if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
+  run: cross build --target i686-unknown-linux-gnu  # ✅ Success
+
+# Windows uses native toolchain
+if: !(Linux complex targets)
+  run: cargo build --target i686-pc-windows-msvc  # ✅ Success with MSVC
+```
+
+## Technical Details
+
+### cross-rs Capabilities and Limitations
+
+**What cross-rs DOES support:**
+- Linux target cross-compilation (all architectures)
+- Docker-based build environments for Linux
+- Complex toolchain setups (ARMv7, musl, etc.)
+
+**What cross-rs DOES NOT support:**
+- Windows targets (any architecture)
+- macOS targets (any architecture)
+- Cross-compilation TO Windows or macOS
+
+### Updated Build Strategy
+
+**Linux Targets (6 variants):**
+- **Using cross-rs** (Docker-based):
+  - `armv7-unknown-linux-gnueabihf`
+  - `x86_64-unknown-linux-musl`
+  - `aarch64-unknown-linux-musl`
+  - `i686-unknown-linux-gnu`
+  
+- **Using cargo** (native with linker):
+  - `x86_64-unknown-linux-gnu` (default)
+  - `aarch64-unknown-linux-gnu` (gcc-aarch64-linux-gnu)
+
+**Windows Targets (3 variants) - ALL use native cargo:**
+- `x86_64-pc-windows-msvc` ✅ MSVC toolchain
+- `i686-pc-windows-msvc` ✅ MSVC toolchain (FIXED)
+- `aarch64-pc-windows-msvc` ✅ MSVC toolchain
+
+**macOS Targets (2 variants) - ALL use native cargo:**
+- `x86_64-apple-darwin` ✅ Apple toolchain
+- `aarch64-apple-darwin` ✅ Apple toolchain
+
+## Workflow Improvements
+
+### Simplified Build Logic
+
+**Before (v0.3.6 - Failed):**
+```yaml
+# Too broad - includes Windows
+- Install cross if: contains(target, 'i686')
+- Build with cross if: contains(target, 'i686')
+# ❌ Tried to use cross for Windows i686
+```
+
+**After (v0.3.7 - Fixed):**
+```yaml
+# Specific to Linux only
+- Install cross if: contains(target, 'linux') && (armv7 || musl || i686)
+- Build with cross if: contains(target, 'linux') && (armv7 || musl || i686)
+- Build with cargo if: !(Linux complex targets)
+# ✅ Windows i686 uses native MSVC
+```
+
+### Additional Cleanup
+
+- **Removed crates.io publishing job**: Was disabled (`if: false`) but still present
+- **Cleaner conditionals**: More explicit and easier to understand
+- **Better maintainability**: Clear separation of build strategies
+
+## All Platforms Building Successfully
+
+✅ **Linux (6 variants)**:
+- x86_64 GNU ✅ (cargo)
+- x86_64 musl ✅ (cross-rs)
+- ARM64 GNU ✅ (cargo + linker)
+- ARM64 musl ✅ (cross-rs)
+- ARMv7 ✅ (cross-rs)
+- i686 ✅ (cross-rs)
+
+✅ **Windows (3 variants)**:
+- x86_64 ✅ (cargo + MSVC)
+- i686 ✅ (cargo + MSVC) - **FIXED in v0.3.7**
+- ARM64 ✅ (cargo + MSVC)
+
+✅ **macOS (2 variants)**:
+- x86_64 Intel ✅ (cargo + Apple)
+- ARM64 Apple Silicon ✅ (cargo + Apple)
+
+## Verification
+
+All 11 platform artifacts include:
+- ✅ Compiled binary
+- ✅ SHA256 checksum file
+- ✅ Verified successful build in CI/CD
+- ✅ Correct toolchain usage
+
+## Breaking Changes
+
+None. This is a CI/CD build configuration fix with no runtime changes.
+
+## Upgrade Notes
+
+If you're on v0.3.6:
+- Windows i686 binary was missing from releases
+- **Upgrade to v0.3.7** for complete platform coverage
+- All other platforms from v0.3.6 work correctly
+
+Upgrade process:
+1. Download the appropriate binary for your platform
+2. Verify using the SHA256 checksum
+3. Replace your existing binary
+4. No configuration changes needed
+
+## For Developers
+
+### Understanding cross-rs Limitations
+
+If you're setting up cross-compilation:
+
+**For Linux targets:**
+```bash
+# cross-rs works great
+cargo install cross
+cross build --target i686-unknown-linux-gnu
+cross build --target armv7-unknown-linux-gnueabihf
+```
+
+**For Windows targets:**
+```bash
+# Use native toolchain or specialized tools
+# On Windows:
+cargo build --target i686-pc-windows-msvc
+
+# Cross-compiling TO Windows requires different tools:
+# - MinGW-w64 for Linux → Windows
+# - Not cross-rs
+```
+
+### CI/CD Best Practices
+
+When setting up multi-platform builds:
+1. **Know your tool capabilities**: cross-rs = Linux only
+2. **Use native toolchains when possible**: More reliable, less overhead
+3. **Be explicit in conditionals**: Avoid broad matches like `contains(target, 'i686')`
+4. **Test each platform**: Don't assume tools work universally
+
+## Version History Context
+
+### v0.3.4
+- Added SHA256 checksums
+- ARMv7 and complex targets failed
+
+### v0.3.5
+- Integrated cross-rs for complex targets
+- Fixed ARMv7, musl, i686 Linux builds
+- aarch64 GNU still failing
+
+### v0.3.6
+- Fixed aarch64 GNU linker configuration
+- But cross-rs applied too broadly (included Windows)
+
+### v0.3.7 (Current)
+- Fixed cross-rs scope to Linux only
+- Windows builds use native MSVC
+- **All 11 platforms building successfully**
+- Removed unnecessary crates.io job
+
+## Known Limitations
+
+- cross-rs only supports Linux target cross-compilation
+- Windows ARM64 still experimental (limited hardware availability)
+- First cross-rs builds download large Docker images
+
+## What's Next
+
+With complete and reliable platform coverage, v0.3.8 may include:
+- Feature development (parallel streams, IPv6)
+- Performance optimizations
+- Additional protocols (SCTP)
+- More output formats (CSV, XML)
+
+## Getting Help
+
+- **Documentation**: [README.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/main/README.md)
+- **Build Issues**: [GitHub Issues](https://github.com/arunkumar-mourougappane/rperf3-rs/issues)
+- **cross-rs Info**: https://github.com/cross-rs/cross
+- **Discussions**: [GitHub Discussions](https://github.com/arunkumar-mourougappane/rperf3-rs/discussions)
+
+## Contributors
+
+- Arunkumar Mourougappane (@arunkumar-mourougappane)
+
+## Full Changelog
+
+See [CHANGELOG.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/main/CHANGELOG.md) for detailed changes across all versions.
 
 ## Critical Fix: aarch64 Linker Configuration
 

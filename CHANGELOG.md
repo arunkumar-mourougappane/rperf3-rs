@@ -18,6 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.7] - 2025-12-02
+
+### Fixed
+
+- **Windows Build Failures**: Corrected cross-rs usage for Linux-only targets
+  - Windows i686 and ARM64 now use native MSVC toolchain
+  - cross-rs restricted to Linux targets only (armv7, musl, i686)
+  - Fixes GitHub Actions job 56985371251 failure
+  - cross-rs doesn't support Windows targets - only Linux
+
+### Changed
+
+- **Build System Simplification**: Streamlined cross-compilation logic
+  - Install cross-rs only for Linux complex targets
+  - Windows builds exclusively use native toolchain
+  - Simplified build conditionals for better maintainability
+  - Removed disabled crates.io publishing job entirely
+
+### Technical Details
+
+- cross-rs provides Docker images for Linux cross-compilation only
+- Windows MSVC toolchain handles all Windows targets natively
+- Cleaner workflow reduces build complexity and potential errors
+
 ## [0.3.6] - 2025-12-02
 
 ### Fixed
