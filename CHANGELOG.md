@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.2] - 2025-12-02
+
+### Fixed
+
+- **GitHub Actions Release Workflow**: Fixed "Resource not accessible by integration" error
+  - Added `contents: write` permission at workflow and job levels
+  - Replaced deprecated `actions/create-release@v1` with `softprops/action-gh-release@v1`
+  - Replaced deprecated `actions/upload-release-asset@v1` with modern alternative
+  - Enabled automatic release notes generation
+  - Temporarily disabled crates.io publishing until CARGO_TOKEN is configured
+  - Release workflow now properly creates GitHub releases and uploads artifacts
+
 ## [0.3.1] - 2025-12-02
 
 ### Fixed
