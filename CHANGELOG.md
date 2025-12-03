@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.1] - 2025-12-02
+
+### Fixed
+
+- **Connection Error Handling**: Fixed "Connection reset by peer" and "early eof" errors
+  - Client now handles connection errors gracefully when reading final messages
+  - Result message reading wrapped in error handling
+  - Done message reading wrapped in error handling
+  - Test completes successfully even if server closes connection early
+  - Debug logging instead of fatal errors for expected connection closures
+
 ## [0.3.0] - 2025-12-02
 
 ### Added

@@ -202,7 +202,10 @@ impl Client {
                 }
             },
             Err(e) => {
-                debug!("Could not read result message (connection may be closed): {}", e);
+                debug!(
+                    "Could not read result message (connection may be closed): {}",
+                    e
+                );
             }
         }
 
@@ -217,7 +220,10 @@ impl Client {
                 }
             },
             Err(e) => {
-                debug!("Could not read done message (connection may be closed): {}", e);
+                debug!(
+                    "Could not read done message (connection may be closed): {}",
+                    e
+                );
                 info!("Test completed");
             }
         }
