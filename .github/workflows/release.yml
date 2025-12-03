@@ -106,28 +106,24 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       
-      - name: Install cross for complex targets
-        if: contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686')
+      - name: Install cross for Linux complex targets
+        if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
         run: |
           cargo install cross --git https://github.com/cross-rs/cross
       
-      - name: Install cross-compilation tools
-        if: contains(matrix.target, 'linux') && !contains(matrix.target, 'armv7') && !contains(matrix.target, 'musl') && !contains(matrix.target, 'i686')
+      - name: Install cross-compilation tools for aarch64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-gnu)
-              sudo apt-get install -y gcc-aarch64-linux-gnu
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-              ;;
-          esac
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
       
-      - name: Build with cross (complex targets)
-        if: contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686')
+      - name: Build with cross (Linux complex targets only)
+        if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
         run: cross build --release --target ${{ matrix.target }}
       
-      - name: Build with cargo (native/simple targets)
-        if: ${{ !(contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686')) }}
+      - name: Build with cargo (all other targets)
+        if: ${{ !(contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))) }}
         run: cargo build --release --target ${{ matrix.target }}
       
       - name: Strip binary (Linux/macOS)
@@ -152,17 +148,3 @@ jobs:
           files: |
             ./artifacts/${{ matrix.asset_name }}
             ./artifacts/${{ matrix.asset_name }}.sha256
-
-  publish-crate:
-    name: Publish to crates.io
-    needs: build-release
-    runs-on: ubuntu-latest
-    if: false  # Disabled until CARGO_TOKEN is configured
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
