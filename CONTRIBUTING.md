@@ -31,24 +31,33 @@ cargo fmt
 
 ### Project Structure
 
-```
+```text
 rperf3-rs/
 ├── src/
-│   ├── lib.rs              # Library root, exports public API
+│   ├── lib.rs                      # Library root, exports public API
+│   ├── main.rs                     # Legacy CLI entry point (deprecated)
 │   ├── bin/
-│   │   └── main.rs         # CLI binary entry point
-│   ├── client.rs           # Client implementation
-│   ├── server.rs           # Server implementation
-│   ├── protocol.rs         # Protocol message definitions
-│   ├── config.rs           # Configuration and builder
-│   ├── measurements.rs     # Statistics collection
-│   └── error.rs            # Error types
-├── examples/               # Usage examples
-│   ├── server.rs
-│   ├── client.rs
-│   └── udp_client.rs
-└── tests/                  # Integration tests
-    └── integration_tests.rs
+│   │   └── main.rs                 # Primary CLI binary entry point
+│   ├── client.rs                   # Client implementation with callback support
+│   ├── server.rs                   # Server implementation
+│   ├── protocol.rs                 # Protocol message definitions
+│   ├── config.rs                   # Configuration and builder patterns
+│   ├── measurements.rs             # Statistics collection (TCP/UDP)
+│   └── error.rs                    # Error types and handling
+├── examples/                       # Usage examples
+│   ├── server.rs                   # Basic server example
+│   ├── client.rs                   # Basic client example
+│   ├── udp_client.rs               # UDP client example
+│   ├── client_with_callback.rs     # Callback example with custom struct
+│   ├── client_closure_callback.rs  # Callback example with closures
+│   ├── show_json_structure.rs      # TCP JSON output demonstration
+│   ├── show_udp_json.rs            # UDP JSON output demonstration
+│   └── test_json_output.rs         # JSON serialization testing
+├── tests/                          # Integration tests
+│   └── integration_tests.rs
+├── CHANGELOG.md                    # Version history and features
+├── CONTRIBUTING.md                 # This file
+└── README.md                       # User documentation
 ```
 
 ## How to Contribute

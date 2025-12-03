@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-12-02
 
 ### Added
+
 - Initial release of rperf3-rs
 - TCP throughput testing (client and server modes)
 - UDP throughput testing with bandwidth limiting
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full documentation and guides
 
 ### Features Implemented
+
 - TCP and UDP protocol support
 - Bidirectional testing modes
 - Periodic bandwidth reports at configurable intervals
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clean separation between library and binary
 
 ### Technical Highlights
+
 - Zero compiler warnings
 - All tests passing
 - ~1,500+ lines of well-documented code
@@ -43,7 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - **Progress Callbacks**: Real-time test progress monitoring via callback interface
+
   - `ProgressEvent` enum with TestStarted, IntervalUpdate, TestCompleted, and Error events
   - `ProgressCallback` trait supporting both closures and custom structs
   - `Client::with_callback()` builder method for easy callback integration
@@ -57,7 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Per-interval statistics with bytes, throughput, and packet counts (UDP)
   - Platform-specific TCP statistics via `TCP_INFO` socket option (Linux)
   - Helper functions: `get_connection_info()`, `get_system_info()`, `get_tcp_stats()`
-  
 - **Enhanced Measurements**: New comprehensive data structures
   - `DetailedTestResults` with start/intervals/end sections
   - `ConnectionInfo` for socket-level details
@@ -71,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - UDP tracking methods: `record_udp_packet()`, `record_udp_loss()`, `update_jitter()`
 
 ### Removed
+
 - **iperf3 Protocol Compatibility**: Removed incompatible iperf3 client implementation
   - Deleted `iperf3_client.rs` (~400 lines)
   - Deleted `iperf3_protocol.rs` (~215 lines)
@@ -78,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaned up all iperf3 references from documentation
 
 ### Changed
+
 - JSON output now uses detailed results structure with protocol-specific formatting
 - UDP mode now tracks packets, jitter (exponential moving average), and loss statistics
 - Interval statistics include optional packet counts for UDP
@@ -86,14 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved documentation organization (consolidated from 5 files to 3)
 
 ### Dependencies
+
 - Added `rand` 0.8 for cookie generation
 - Added `hostname` 0.3 for system information
 - Added `libc` 0.2 (Linux only) for TCP statistics via socket options
 
 ### Planned Enhancements
+
 - ~~UDP packet loss and jitter measurement~~ ✅ Completed
 - ~~TCP retransmission statistics~~ ✅ Completed (Linux)
-- Enhanced parallel stream support  
+- Enhanced parallel stream support
 - IPv6 improvements
 - SCTP protocol support
 - CPU utilization monitoring

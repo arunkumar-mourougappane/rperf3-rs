@@ -130,16 +130,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_protocol(Protocol::Tcp)
         .with_duration(Duration::from_secs(10))
         .with_buffer_size(128 * 1024);
-    
+
     // Run the test
     let client = Client::new(config)?;
     client.run().await?;
-    
+
     // Get results
     let measurements = client.get_measurements();
-    println!("Bandwidth: {:.2} Mbps", 
+    println!("Bandwidth: {:.2} Mbps",
              measurements.total_bits_per_second() / 1_000_000.0);
-    
+
     Ok(())
 }
 ```
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::client("127.0.0.1".to_string(), 5201)
         .with_protocol(Protocol::Tcp)
         .with_duration(Duration::from_secs(10));
-    
+
     // Create client with callback
     let client = Client::new(config)?
         .with_callback(|event: ProgressEvent| {
@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         });
-    
+
     client.run().await?;
     Ok(())
 }
@@ -210,6 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 When using the `--json` flag, rperf3 outputs comprehensive test results in a structured JSON format similar to iperf3. This includes:
 
 **TCP Mode:**
+
 - **Connection Information**: Socket FD, local/remote addresses and ports
 - **System Information**: OS version, hostname, timestamp
 - **Test Configuration**: Protocol, stream count, buffer size, duration, direction
@@ -220,6 +221,7 @@ When using the `--json` flag, rperf3 outputs comprehensive test results in a str
 - **Congestion Algorithm**: TCP congestion control algorithm in use
 
 **UDP Mode:**
+
 - **Connection Information**: Socket FD, local/remote addresses and ports
 - **System Information**: OS version, hostname, timestamp
 - **Test Configuration**: Protocol, stream count, buffer size, duration, direction
@@ -240,13 +242,15 @@ Sample output structure:
 ```json
 {
   "start": {
-    "connected": [{
-      "socket_fd": 3,
-      "local_host": "127.0.0.1",
-      "local_port": 45678,
-      "remote_host": "127.0.0.1",
-      "remote_port": 5201
-    }],
+    "connected": [
+      {
+        "socket_fd": 3,
+        "local_host": "127.0.0.1",
+        "local_port": 45678,
+        "remote_host": "127.0.0.1",
+        "remote_port": 5201
+      }
+    ],
     "version": "rperf3 0.1.0",
     "system_info": "linux x86_64 hostname",
     "timestamp": {
@@ -261,21 +265,27 @@ Sample output structure:
       "reverse": false
     }
   },
-  "intervals": [{
-    "streams": [{
-      "socket": 3,
-      "start": 0.0,
-      "end": 1.0,
-      "seconds": 1.0,
-      "bytes": 1000000000,
-      "bits_per_second": 8000000000.0,
-      "retransmits": 0,
-      "snd_cwnd": 43680,
-      "rtt": 123,
-      "omitted": false
-    }],
-    "sum": { /* aggregate stats */ }
-  }],
+  "intervals": [
+    {
+      "streams": [
+        {
+          "socket": 3,
+          "start": 0.0,
+          "end": 1.0,
+          "seconds": 1.0,
+          "bytes": 1000000000,
+          "bits_per_second": 8000000000.0,
+          "retransmits": 0,
+          "snd_cwnd": 43680,
+          "rtt": 123,
+          "omitted": false
+        }
+      ],
+      "sum": {
+        /* aggregate stats */
+      }
+    }
+  ],
   "end": {
     "sum_sent": {
       "bytes": 5000000000,
@@ -307,32 +317,40 @@ Sample UDP output:
       "duration": 10
     }
   },
-  "intervals": [{
-    "streams": [{
-      "socket": 5,
-      "start": 0.0,
-      "end": 1.0,
-      "seconds": 1.0,
-      "bytes": 131768,
-      "bits_per_second": 1054144.0,
-      "packets": 91,
-      "omitted": false,
-      "sender": true
-    }],
-    "sum": { /* aggregate with packets */ }
-  }],
-  "end": {
-    "streams": [{
-      "udp": {
-        "bytes": 1311888,
-        "bits_per_second": 1049500.0,
-        "jitter_ms": 1.54,
-        "lost_packets": 0,
-        "packets": 906,
-        "lost_percent": 0.0,
-        "sender": true
+  "intervals": [
+    {
+      "streams": [
+        {
+          "socket": 5,
+          "start": 0.0,
+          "end": 1.0,
+          "seconds": 1.0,
+          "bytes": 131768,
+          "bits_per_second": 1054144.0,
+          "packets": 91,
+          "omitted": false,
+          "sender": true
+        }
+      ],
+      "sum": {
+        /* aggregate with packets */
       }
-    }],
+    }
+  ],
+  "end": {
+    "streams": [
+      {
+        "udp": {
+          "bytes": 1311888,
+          "bits_per_second": 1049500.0,
+          "jitter_ms": 1.54,
+          "lost_packets": 0,
+          "packets": 906,
+          "lost_percent": 0.0,
+          "sender": true
+        }
+      }
+    ],
     "sum": {
       "jitter_ms": 1.54,
       "lost_packets": 0,
