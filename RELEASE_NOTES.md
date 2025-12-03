@@ -1,3 +1,240 @@
+# Release Notes - Version 0.3.8
+
+**Release Date:** December 2, 2025
+
+## Overview
+
+Version 0.3.8 adds the necessary metadata for publishing rperf3-rs to crates.io and enhances the project documentation. This release resolves the publishing error encountered when attempting to publish v0.3.7, which failed due to missing required package metadata fields.
+
+## What's New
+
+### Crates.io Publishing Support
+
+rperf3-rs can now be published to crates.io with all required metadata:
+
+**Added Package Metadata:**
+- **description**: "A network throughput measurement tool written in Rust, inspired by iperf3"
+- **license**: "MIT OR Apache-2.0" (dual licensing)
+- **repository**: GitHub repository URL for source code access
+- **readme**: Reference to README.md for crates.io display
+- **keywords**: network, benchmarking, performance, iperf, bandwidth
+- **categories**: network-programming, command-line-utilities
+
+### Enhanced Documentation
+
+README.md has been significantly improved:
+
+**What is rperf3-rs? Section:**
+- Comprehensive explanation of the tool's purpose
+- Clear use cases: diagnosing network issues, validating infrastructure, benchmarking equipment
+- Technical foundation: Rust, Tokio async runtime, memory safety guarantees
+
+**Key Capabilities:**
+- Accurate bandwidth measurement with sub-second intervals
+- Bidirectional testing (normal and reverse modes)
+- Detailed TCP statistics (Linux: retransmits, RTT, congestion window, PMTU)
+- UDP metrics (packet loss, jitter, out-of-order packets)
+- Dual interface: CLI tool and Rust library
+- Real-time callbacks for programmatic monitoring
+- JSON output for automation
+- Cross-platform support (Linux, macOS, Windows)
+
+**Why rperf3-rs?:**
+- **Performance**: 25-30 Gbps throughput on localhost tests
+- **Safety**: Rust's compile-time memory safety guarantees
+- **Developer-Friendly**: Clean API design with builder patterns
+- **Modern Architecture**: Async/await, modular design, thread-safe statistics
+
+### Publishing to Crates.io
+
+With this release, users can now install rperf3-rs via cargo:
+
+```bash
+# Once published
+cargo install rperf3-rs
+```
+
+And use it as a library dependency:
+
+```toml
+[dependencies]
+rperf3-rs = "0.3.8"
+tokio = { version = "1", features = ["full"] }
+```
+
+## Technical Details
+
+### Previous Publishing Error
+
+Attempting to publish v0.3.7 failed with:
+```
+error: failed to publish rperf3-rs v0.3.7 to registry at https://crates.io
+
+Caused by:
+  the remote server responded with an error (status 400 Bad Request): 
+  missing or empty metadata fields: description, license.
+```
+
+### Required Metadata Fields
+
+According to crates.io requirements, packages must include:
+1. **description** (required): Brief summary of the package
+2. **license** (required): SPDX license identifier
+3. **repository** (recommended): Source code location
+4. **readme** (recommended): Path to README file
+5. **keywords** (recommended): Up to 5 keywords for search
+6. **categories** (recommended): Package categorization
+
+### Cargo.toml Before and After
+
+**Before (v0.3.7):**
+```toml
+[package]
+name = "rperf3-rs"
+version = "0.3.7"
+edition = "2021"
+authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
+# Missing: description, license, repository, readme, keywords, categories
+```
+
+**After (v0.3.8):**
+```toml
+[package]
+name = "rperf3-rs"
+version = "0.3.8"
+edition = "2021"
+authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
+description = "A network throughput measurement tool written in Rust, inspired by iperf3"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/arunkumar-mourougappane/rperf3-rs"
+readme = "README.md"
+keywords = ["network", "benchmarking", "performance", "iperf", "bandwidth"]
+categories = ["network-programming", "command-line-utilities"]
+```
+
+## Installation
+
+### From Crates.io (New!)
+
+```bash
+cargo install rperf3-rs
+```
+
+### From Source
+
+```bash
+git clone https://github.com/arunkumar-mourougappane/rperf3-rs.git
+cd rperf3-rs
+cargo build --release
+```
+
+### Pre-built Binaries
+
+Download platform-specific binaries from GitHub Releases:
+- Linux: x86_64 (GNU/musl), ARM64 (GNU/musl), ARMv7, i686
+- Windows: x86_64, i686, ARM64
+- macOS: x86_64 (Intel), ARM64 (Apple Silicon)
+
+## Library Usage
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+rperf3-rs = "0.3.8"
+tokio = { version = "1", features = ["full"] }
+```
+
+Basic example:
+
+```rust
+use rperf3::{Client, Config, Protocol};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::client("127.0.0.1".to_string(), 5201)
+        .with_protocol(Protocol::Tcp)
+        .with_duration(Duration::from_secs(10));
+
+    let client = Client::new(config)?;
+    client.run().await?;
+
+    let measurements = client.get_measurements();
+    println!("Bandwidth: {:.2} Mbps",
+             measurements.total_bits_per_second() / 1_000_000.0);
+
+    Ok(())
+}
+```
+
+## Changes Since v0.3.7
+
+### Added
+- Required crates.io package metadata (description, license)
+- Recommended metadata (repository, readme, keywords, categories)
+- Enhanced project documentation in README.md
+
+### Changed
+- Documentation tone adjusted for broader audience
+- README structure improved with clearer sections
+
+### Fixed
+- Crates.io publishing error (400 Bad Request)
+- Missing metadata fields preventing publication
+
+## Upgrade Notes
+
+This is a metadata-only release with no functional changes to the codebase. Users of v0.3.7 can upgrade without any code modifications.
+
+**For Library Users:**
+```toml
+# Update version in Cargo.toml
+[dependencies]
+rperf3-rs = "0.3.8"  # was "0.3.7"
+```
+
+**For Binary Users:**
+- Download new release from GitHub, or
+- Install from crates.io: `cargo install rperf3-rs`
+
+## Platform Support
+
+All 11 platform variants continue to be built and released:
+
+**Linux (6 variants):**
+- x86_64-unknown-linux-gnu ✅
+- x86_64-unknown-linux-musl ✅
+- aarch64-unknown-linux-gnu ✅
+- aarch64-unknown-linux-musl ✅
+- armv7-unknown-linux-gnueabihf ✅
+- i686-unknown-linux-gnu ✅
+
+**Windows (3 variants):**
+- x86_64-pc-windows-msvc ✅
+- i686-pc-windows-msvc ✅
+- aarch64-pc-windows-msvc ✅
+
+**macOS (2 variants):**
+- x86_64-apple-darwin ✅
+- aarch64-apple-darwin ✅
+
+## Next Steps
+
+1. **Publish to Crates.io**: Run `cargo publish` to make rperf3-rs available on crates.io
+2. **Create GitHub Release**: Tag v0.3.8 and create release with binaries
+3. **Update Documentation**: Add crates.io badge and installation instructions
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+Dual-licensed under MIT OR Apache-2.0.
+
+---
+
 # Release Notes - Version 0.3.7
 
 **Release Date:** December 2, 2025

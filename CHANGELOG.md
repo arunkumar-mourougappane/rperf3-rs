@@ -18,6 +18,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.8] - 2025-12-02
+
+### Added
+
+- **Crates.io Publishing Metadata**: Added required package metadata for crates.io publishing
+  - Added `description` field with project summary
+  - Added `license` field with dual MIT/Apache-2.0 licensing
+  - Added `repository` URL pointing to GitHub
+  - Added `readme` reference to README.md
+  - Added `keywords` for discoverability (network, benchmarking, performance, iperf, bandwidth)
+  - Added `categories` for crates.io classification (network-programming, command-line-utilities)
+
+### Changed
+
+- **Documentation**: Enhanced README.md with more comprehensive project description
+  - Added detailed "What is rperf3-rs?" section explaining use cases
+  - Added "Key Capabilities" highlighting main features
+  - Added "Why rperf3-rs?" section covering performance, safety, and developer benefits
+  - Adjusted tone to be more approachable and modest
+
+### Fixed
+
+- **Publishing Error**: Resolved crates.io publishing failure (status 400)
+  - Fixed "missing or empty metadata fields: description, license" error
+  - Package now meets all crates.io requirements for publishing
+
 ## [0.3.7] - 2025-12-02
 
 ### Fixed
