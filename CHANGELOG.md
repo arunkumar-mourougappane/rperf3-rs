@@ -18,6 +18,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.3] - 2025-12-02
+
+### Added
+
+- **Comprehensive Cross-Platform Build Support**: Extended release workflow to build 11 OS/architecture combinations
+  - **Linux (6 variants)**:
+    - x86_64 GNU (standard glibc)
+    - x86_64 musl (static binary, no runtime dependencies)
+    - ARM64/aarch64 GNU
+    - ARM64/aarch64 musl (static binary)
+    - ARMv7 (32-bit ARM for Raspberry Pi and embedded devices)
+    - i686 (32-bit x86)
+  - **macOS (2 variants)**:
+    - x86_64 (Intel processors)
+    - ARM64 (Apple Silicon M1/M2/M3)
+  - **Windows (3 variants)**:
+    - x86_64 (64-bit)
+    - i686 (32-bit)
+    - ARM64 (ARM-based Windows devices)
+- Enhanced cross-compilation toolchain setup for Linux targets
+- Improved artifact naming and organization in releases
+- Static musl binaries for containerized and minimal Linux environments
+
+### Changed
+
+- Release workflow now builds for all major platforms and architectures
+- Added proper cross-compilation dependencies installation
+- Improved build matrix organization and documentation
+
 ## [0.3.2] - 2025-12-02
 
 ### Fixed
