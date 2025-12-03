@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.4] - 2025-12-02
+
+### Added
+
+- **SHA256 Checksums for Release Artifacts**: Enhanced security and integrity verification
+  - Automatic generation of SHA256 checksums for all release binaries
+  - Checksum files uploaded alongside each artifact (`.sha256` extension)
+  - Enables users to verify download integrity and authenticity
+  - Platform-specific checksum generation (certutil on Windows, shasum on Unix)
+  - 22 total files per release: 11 binaries + 11 checksum files
+
+### Security
+
+- Release artifacts can now be cryptographically verified
+- Protection against corrupted or tampered downloads
+- Follows industry standard security practices for binary distribution
+
 ## [0.3.3] - 2025-12-02
 
 ### Added
