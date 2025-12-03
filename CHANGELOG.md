@@ -18,6 +18,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.5] - 2025-12-02
+
+### Fixed
+
+- **Cross-Compilation Build Failures**: Resolved ARMv7 and complex target build issues
+  - Integrated cross-rs for reliable cross-compilation of complex targets
+  - Fixed ARMv7 build failure (exit code 101) by using Docker-based builds
+  - Improved build reliability for musl and i686 targets
+  - Docker-based environments ensure consistent cross-compilation results
+
+### Changed
+
+- **Build System Improvements**: Enhanced cross-compilation infrastructure
+  - Use cross-rs for: ARMv7, all musl variants (x86_64, ARM64), i686
+  - Use native cargo for: x86_64 GNU, ARM64 GNU, macOS, Windows
+  - Simplified toolchain setup by leveraging cross-rs Docker images
+  - More reliable builds across all 11 platform variants
+
+### Technical Details
+
+- cross-rs provides pre-configured build environments with proper linkers
+- Eliminates manual gcc cross-compiler configuration complexity
+- Ensures consistent builds regardless of CI runner environment
+- Docker-based isolation prevents dependency conflicts
+
 ## [0.3.4] - 2025-12-02
 
 ### Added
