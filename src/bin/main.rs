@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             use rperf3::client::Client;
-            
+
             let client = Client::new(config)?;
             client.run().await?;
         }

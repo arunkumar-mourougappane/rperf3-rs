@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_json(true);
 
     let client = Client::new(config)?;
-    
+
     match client.run().await {
         Ok(_) => println!("\nTest completed successfully"),
         Err(e) => eprintln!("\nError: {}", e),

@@ -20,15 +20,10 @@ pub enum Message {
     },
 
     /// Server acknowledgment of setup
-    SetupAck {
-        port: u16,
-        cookie: String,
-    },
+    SetupAck { port: u16, cookie: String },
 
     /// Test start signal
-    Start {
-        timestamp: u64,
-    },
+    Start { timestamp: u64 },
 
     /// Interval results
     Interval {
@@ -53,9 +48,7 @@ pub enum Message {
     Done,
 
     /// Error message
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 impl Message {

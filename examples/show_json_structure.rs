@@ -1,12 +1,12 @@
 use rperf3::measurements::{
-    get_system_info, ConnectionInfo, TestConfig, MeasurementsCollector, IntervalStats,
+    get_system_info, ConnectionInfo, IntervalStats, MeasurementsCollector, TestConfig,
 };
 use std::time::Duration;
 
 fn main() {
     // Create a mock measurements collector
     let collector = MeasurementsCollector::new();
-    
+
     // Add some mock data
     collector.record_bytes_sent(0, 1000000000); // 1GB
     collector.add_interval(IntervalStats {
@@ -17,7 +17,7 @@ fn main() {
         packets: None,
     });
     collector.set_duration(Duration::from_secs(3));
-    
+
     // Create mock connection info
     let conn_info = Some(ConnectionInfo {
         socket_fd: Some(3),
@@ -26,10 +26,10 @@ fn main() {
         remote_host: "127.0.0.1".to_string(),
         remote_port: 5201,
     });
-    
+
     // Get system info
     let sys_info = Some(get_system_info());
-    
+
     // Create test config
     let test_config = TestConfig {
         protocol: "Tcp".to_string(),
@@ -39,10 +39,10 @@ fn main() {
         duration: 3,
         reverse: false,
     };
-    
+
     // Get detailed results
     let results = collector.get_detailed_results(conn_info, sys_info, test_config);
-    
+
     // Print as JSON
     let json = serde_json::to_string_pretty(&results).unwrap();
     println!("{}", json);

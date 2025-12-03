@@ -1,7 +1,7 @@
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::Mutex;
 
 /// Connection information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,25 +34,13 @@ pub struct SystemInfo {
 }
 
 /// TCP statistics for an interval
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TcpStats {
     pub retransmits: u64,
     pub snd_cwnd: Option<u64>,
     pub rtt: Option<u64>,
     pub rttvar: Option<u64>,
     pub pmtu: Option<u64>,
-}
-
-impl Default for TcpStats {
-    fn default() -> Self {
-        Self {
-            retransmits: 0,
-            snd_cwnd: None,
-            rtt: None,
-            rttvar: None,
-            pmtu: None,
-        }
-    }
 }
 
 /// UDP statistics for an interval
@@ -223,8 +211,8 @@ pub enum IntervalData {
 pub enum TestEndInfo {
     Tcp {
         streams: Vec<EndStreamInfo>,
-        sum_sent: StreamSummary,
-        sum_received: StreamSummary,
+        sum_sent: Box<StreamSummary>,
+        sum_received: Box<StreamSummary>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cpu_utilization_percent: Option<CpuUtilization>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -448,31 +436,32 @@ impl MeasurementsCollector {
     ) -> DetailedTestResults {
         let m = self.inner.lock();
         let is_udp = test_config.protocol.to_uppercase() == "UDP";
-        
+
         // Build start info
         let start_info = TestStartInfo {
             connected: connection_info.clone().into_iter().collect(),
             version: format!("rperf3 {}", env!("CARGO_PKG_VERSION")),
-            system_info: system_info.as_ref()
+            system_info: system_info
+                .as_ref()
                 .map(|s| s.system_info.clone())
-                .unwrap_or_else(|| {
-                    format!("{} {}", 
-                        std::env::consts::OS,
-                        std::env::consts::ARCH)
-                }),
+                .unwrap_or_else(|| format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)),
             timestamp: TimestampInfo {
-                time: system_info.as_ref()
+                time: system_info
+                    .as_ref()
                     .map(|s| s.timestamp_str.clone())
                     .unwrap_or_else(|| chrono::Utc::now().to_rfc2822()),
-                timesecs: system_info.as_ref()
+                timesecs: system_info
+                    .as_ref()
                     .map(|s| s.timestamp)
                     .unwrap_or_else(|| chrono::Utc::now().timestamp()),
             },
             connecting_to: ConnectingTo {
-                host: connection_info.as_ref()
+                host: connection_info
+                    .as_ref()
                     .map(|c| c.remote_host.clone())
                     .unwrap_or_default(),
-                port: connection_info.as_ref()
+                port: connection_info
+                    .as_ref()
                     .map(|c| c.remote_port)
                     .unwrap_or(5201),
             },
@@ -524,7 +513,7 @@ impl MeasurementsCollector {
                 omitted: false,
                 sender: true,
             };
-            
+
             intervals.push(IntervalData::Tcp {
                 streams: vec![stream_stat.clone()],
                 sum: stream_stat,
@@ -551,7 +540,7 @@ impl MeasurementsCollector {
                 omitted: false,
                 sender: true,
             };
-            
+
             intervals.push(IntervalData::Udp {
                 streams: vec![stream_stat.clone()],
                 sum: stream_stat,
@@ -605,8 +594,8 @@ impl MeasurementsCollector {
                 sender: sender_summary.clone(),
                 receiver: receiver_summary.clone(),
             }],
-            sum_sent: sender_summary,
-            sum_received: receiver_summary,
+            sum_sent: Box::new(sender_summary),
+            sum_received: Box::new(receiver_summary),
             cpu_utilization_percent: None,
             sender_tcp_congestion: Some("cubic".to_string()),
             receiver_tcp_congestion: Some("cubic".to_string()),
@@ -658,9 +647,7 @@ impl MeasurementsCollector {
         };
 
         TestEndInfo::Udp {
-            streams: vec![UdpEndStreamInfo {
-                udp: udp_summary,
-            }],
+            streams: vec![UdpEndStreamInfo { udp: udp_summary }],
             sum: udp_sum,
             cpu_utilization_percent: None,
         }
@@ -674,12 +661,12 @@ impl Default for MeasurementsCollector {
 }
 
 /// Helper functions to gather system and connection information
-
 /// Get system information
 pub fn get_system_info() -> SystemInfo {
     SystemInfo {
         version: format!("rperf3 {}", env!("CARGO_PKG_VERSION")),
-        system_info: format!("{} {} {}", 
+        system_info: format!(
+            "{} {} {}",
             std::env::consts::OS,
             std::env::consts::ARCH,
             hostname::get()
@@ -696,11 +683,11 @@ pub fn get_system_info() -> SystemInfo {
 #[cfg(target_os = "linux")]
 pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<ConnectionInfo> {
     use std::os::unix::io::AsRawFd;
-    
+
     let local_addr = stream.local_addr()?;
     let remote_addr = stream.peer_addr()?;
     let fd = stream.as_raw_fd();
-    
+
     Ok(ConnectionInfo {
         socket_fd: Some(fd),
         local_host: local_addr.ip().to_string(),
@@ -714,7 +701,7 @@ pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<Co
 pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<ConnectionInfo> {
     let local_addr = stream.local_addr()?;
     let remote_addr = stream.peer_addr()?;
-    
+
     Ok(ConnectionInfo {
         socket_fd: None,
         local_host: local_addr.ip().to_string(),
@@ -727,11 +714,11 @@ pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<Co
 /// Get TCP statistics from a socket (Linux only)
 #[cfg(target_os = "linux")]
 pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats> {
-    use std::os::unix::io::AsRawFd;
     use std::mem;
-    
+    use std::os::unix::io::AsRawFd;
+
     let fd = stream.as_raw_fd();
-    
+
     // TCP_INFO structure (simplified, Linux-specific)
     #[repr(C)]
     struct TcpInfo {
@@ -743,23 +730,23 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
         options: u8,
         snd_wscale: u8,
         rcv_wscale: u8,
-        
+
         rto: u32,
         ato: u32,
         snd_mss: u32,
         rcv_mss: u32,
-        
+
         unacked: u32,
         sacked: u32,
         lost: u32,
         retrans: u32,
         fackets: u32,
-        
+
         last_data_sent: u32,
         last_ack_sent: u32,
         last_data_recv: u32,
         last_ack_recv: u32,
-        
+
         pmtu: u32,
         rcv_ssthresh: u32,
         rtt: u32,
@@ -768,19 +755,19 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
         snd_cwnd: u32,
         advmss: u32,
         reordering: u32,
-        
+
         rcv_rtt: u32,
         rcv_space: u32,
-        
+
         total_retrans: u32,
     }
-    
+
     const TCP_INFO: i32 = 11;
     const SOL_TCP: i32 = 6;
-    
+
     let mut info: TcpInfo = unsafe { mem::zeroed() };
     let mut len = mem::size_of::<TcpInfo>() as u32;
-    
+
     let result = unsafe {
         libc::getsockopt(
             fd,
@@ -790,7 +777,7 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
             &mut len as *mut u32,
         )
     };
-    
+
     if result == 0 {
         Ok(TcpStats {
             retransmits: info.total_retrans as u64,

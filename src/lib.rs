@@ -11,17 +11,17 @@
 //! - JSON output format
 //! - Asynchronous I/O using tokio
 
-pub mod protocol;
-pub mod server;
 pub mod client;
 pub mod config;
-pub mod measurements;
 pub mod error;
+pub mod measurements;
+pub mod protocol;
+pub mod server;
 
-pub use error::{Error, Result};
-pub use config::{Config, Protocol};
-pub use measurements::Measurements;
 pub use client::{Client, ProgressCallback, ProgressEvent};
+pub use config::{Config, Protocol};
+pub use error::{Error, Result};
+pub use measurements::Measurements;
 pub use server::Server;
 
 /// Library version

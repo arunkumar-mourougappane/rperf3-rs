@@ -1,7 +1,7 @@
 use crate::config::{Config, Protocol};
 use crate::measurements::{
-    get_connection_info, get_system_info, get_tcp_stats, IntervalStats, 
-    MeasurementsCollector, TestConfig,
+    get_connection_info, get_system_info, get_tcp_stats, IntervalStats, MeasurementsCollector,
+    TestConfig,
 };
 use crate::protocol::{deserialize_message, serialize_message, Message};
 use crate::{Error, Result};
@@ -155,10 +155,24 @@ impl Client {
 
         if self.config.reverse {
             // Client receives data from server
-            receive_data(&mut stream, 0, &self.measurements, &self.config, &self.callback).await?;
+            receive_data(
+                &mut stream,
+                0,
+                &self.measurements,
+                &self.config,
+                &self.callback,
+            )
+            .await?;
         } else {
             // Client sends data to server
-            send_data(&mut stream, 0, &self.measurements, &self.config, &self.callback).await?;
+            send_data(
+                &mut stream,
+                0,
+                &self.measurements,
+                &self.config,
+                &self.callback,
+            )
+            .await?;
         }
 
         // Collect TCP stats before closing
@@ -212,11 +226,9 @@ impl Client {
                 duration: self.config.duration.as_secs(),
                 reverse: self.config.reverse,
             };
-            let detailed_results = self.measurements.get_detailed_results(
-                connection_info,
-                system_info,
-                test_config,
-            );
+            let detailed_results =
+                self.measurements
+                    .get_detailed_results(connection_info, system_info, test_config);
             let json = serde_json::to_string_pretty(&detailed_results)?;
             println!("{}", json);
         }
@@ -258,47 +270,47 @@ impl Client {
                     interval_bytes += n as u64;
                     interval_packets += 1;
 
-                // Report interval
-                if last_interval.elapsed() >= self.config.interval {
-                    let elapsed = start.elapsed();
-                    let interval_duration = last_interval.elapsed();
-                    let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+                    // Report interval
+                    if last_interval.elapsed() >= self.config.interval {
+                        let elapsed = start.elapsed();
+                        let interval_duration = last_interval.elapsed();
+                        let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
 
-                    let interval_start = if elapsed > interval_duration {
-                        elapsed - interval_duration
-                    } else {
-                        Duration::ZERO
-                    };
+                        let interval_start = if elapsed > interval_duration {
+                            elapsed - interval_duration
+                        } else {
+                            Duration::ZERO
+                        };
 
-                    self.measurements.add_interval(IntervalStats {
-                        start: interval_start,
-                        end: elapsed,
-                        bytes: interval_bytes,
-                        bits_per_second: bps,
-                        packets: Some(interval_packets),
-                    });
+                        self.measurements.add_interval(IntervalStats {
+                            start: interval_start,
+                            end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                            packets: Some(interval_packets),
+                        });
 
-                    // Notify callback
-                    self.notify(ProgressEvent::IntervalUpdate {
-                        interval_start,
-                        interval_end: elapsed,
-                        bytes: interval_bytes,
-                        bits_per_second: bps,
-                    });
+                        // Notify callback
+                        self.notify(ProgressEvent::IntervalUpdate {
+                            interval_start,
+                            interval_end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                        });
 
-                    if !self.config.json {
-                        println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
-                            interval_start.as_secs_f64(),
-                            elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0,
-                            interval_packets
-                        );
-                    }
-                    interval_bytes = 0;
-                    interval_packets = 0;
-                    last_interval = Instant::now();
+                        if !self.config.json {
+                            println!(
+                                "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
+                                interval_start.as_secs_f64(),
+                                elapsed.as_secs_f64(),
+                                interval_bytes,
+                                bps / 1_000_000.0,
+                                interval_packets
+                            );
+                        }
+                        interval_bytes = 0;
+                        interval_packets = 0;
+                        last_interval = Instant::now();
                     }
 
                     // Bandwidth limiting
@@ -316,14 +328,15 @@ impl Client {
         self.measurements.set_duration(start.elapsed());
 
         let final_measurements = self.measurements.get();
-        
+
         // Notify callback of completion
         self.notify(ProgressEvent::TestCompleted {
-            total_bytes: final_measurements.total_bytes_sent + final_measurements.total_bytes_received,
+            total_bytes: final_measurements.total_bytes_sent
+                + final_measurements.total_bytes_received,
             duration: final_measurements.total_duration,
             bits_per_second: final_measurements.total_bits_per_second(),
         });
-        
+
         if !self.config.json {
             print_results(&final_measurements);
         } else {
@@ -541,4 +554,3 @@ fn print_results(measurements: &crate::Measurements) {
     );
     println!("- - - - - - - - - - - - - - - - - - - - - - - - -\n");
 }
-

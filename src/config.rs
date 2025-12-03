@@ -21,37 +21,37 @@ pub enum Mode {
 pub struct Config {
     /// Server mode or client mode
     pub mode: Mode,
-    
+
     /// Protocol to use (TCP or UDP)
     pub protocol: Protocol,
-    
+
     /// Port number to use
     pub port: u16,
-    
+
     /// Server address (for client mode)
     pub server_addr: Option<String>,
-    
+
     /// Bind address (for server mode)
     pub bind_addr: Option<IpAddr>,
-    
+
     /// Test duration in seconds
     pub duration: Duration,
-    
+
     /// Target bandwidth in bits per second (for UDP)
     pub bandwidth: Option<u64>,
-    
+
     /// Buffer size in bytes
     pub buffer_size: usize,
-    
+
     /// Number of parallel streams
     pub parallel: usize,
-    
+
     /// Reverse mode (server sends, client receives)
     pub reverse: bool,
-    
+
     /// Output in JSON format
     pub json: bool,
-    
+
     /// Interval for periodic bandwidth reports in seconds
     pub interval: Duration,
 }

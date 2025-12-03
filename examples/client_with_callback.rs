@@ -69,7 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let measurements = client.get_measurements();
     println!("\n📈 Final Statistics:");
     println!("   Total bytes: {}", measurements.total_bytes_sent);
-    println!("   Duration: {:.2}s", measurements.total_duration.as_secs_f64());
+    println!(
+        "   Duration: {:.2}s",
+        measurements.total_duration.as_secs_f64()
+    );
     println!(
         "   Average bandwidth: {:.2} Mbps",
         measurements.total_bits_per_second() / 1_000_000.0

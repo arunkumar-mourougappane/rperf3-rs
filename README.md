@@ -2,6 +2,7 @@
 
 A high-performance network throughput testing tool written in Rust, inspired by iperf3.
 
+[![CI](https://github.com/arunkumar-mourougappane/rperf3-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/arunkumar-mourougappane/rperf3-rs/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 

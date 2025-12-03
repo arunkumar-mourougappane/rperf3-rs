@@ -51,11 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bits_per_second,
             } => {
                 println!("\n🎉 Test finished!");
-                println!(
-                    "   {} bytes in {:.2}s",
-                    total_bytes,
-                    duration.as_secs_f64()
-                );
+                println!("   {} bytes in {:.2}s", total_bytes, duration.as_secs_f64());
                 println!("   Average: {:.2} Mbps", bits_per_second / 1_000_000.0);
             }
             ProgressEvent::Error(msg) => {
@@ -73,7 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(prog) = progress.lock() {
         if !prog.is_empty() {
             println!("\n📊 Progress Analysis:");
-            let avg_mbps: f64 = prog.iter().map(|(_, _, bps)| bps / 1_000_000.0).sum::<f64>()
+            let avg_mbps: f64 = prog
+                .iter()
+                .map(|(_, _, bps)| bps / 1_000_000.0)
+                .sum::<f64>()
                 / prog.len() as f64;
             println!("   Intervals recorded: {}", prog.len());
             println!("   Average interval speed: {:.2} Mbps", avg_mbps);
