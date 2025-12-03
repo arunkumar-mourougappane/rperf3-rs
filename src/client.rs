@@ -178,38 +178,47 @@ impl Client {
         // Collect TCP stats before closing
         let _tcp_stats = get_tcp_stats(&stream).ok();
 
-        // Read final results
-        let result_msg = deserialize_message(&mut stream).await?;
-        match result_msg {
-            Message::Result {
-                stream_id,
-                bytes_sent,
-                bytes_received,
-                duration: _,
-                bits_per_second,
-                ..
-            } => {
-                info!(
-                    "Stream {}: {} bytes sent, {} bytes received, {:.2} Mbps",
+        // Read final results - handle connection errors gracefully
+        match deserialize_message(&mut stream).await {
+            Ok(result_msg) => match result_msg {
+                Message::Result {
                     stream_id,
                     bytes_sent,
                     bytes_received,
-                    bits_per_second / 1_000_000.0
-                );
-            }
-            _ => {
-                debug!("Unexpected message, continuing");
+                    duration: _,
+                    bits_per_second,
+                    ..
+                } => {
+                    info!(
+                        "Stream {}: {} bytes sent, {} bytes received, {:.2} Mbps",
+                        stream_id,
+                        bytes_sent,
+                        bytes_received,
+                        bits_per_second / 1_000_000.0
+                    );
+                }
+                _ => {
+                    debug!("Unexpected message, continuing");
+                }
+            },
+            Err(e) => {
+                debug!("Could not read result message (connection may be closed): {}", e);
             }
         }
 
-        // Read done signal
-        let done_msg = deserialize_message(&mut stream).await?;
-        match done_msg {
-            Message::Done => {
+        // Read done signal - handle connection errors gracefully
+        match deserialize_message(&mut stream).await {
+            Ok(done_msg) => match done_msg {
+                Message::Done => {
+                    info!("Test completed");
+                }
+                _ => {
+                    debug!("Expected Done message");
+                }
+            },
+            Err(e) => {
+                debug!("Could not read done message (connection may be closed): {}", e);
                 info!("Test completed");
-            }
-            _ => {
-                debug!("Expected Done message");
             }
         }
 
