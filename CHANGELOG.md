@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.6] - 2025-12-02
+
+### Fixed
+
+- **aarch64 GitHub Actions Build**: Configured linker for ARM64 cross-compilation in CI/CD
+  - Set `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` environment variable
+  - Points to `gcc-aarch64-linux-gnu` cross-compiler
+  - Fixes build failure in GitHub Actions release workflow
+  - Ensures successful artifact generation for ARM64 GNU target
+
+### Technical Details
+
+- cargo requires explicit linker configuration for cross-compilation targets
+- Environment variable automatically set during cross-compiler installation
+- Matches local development build configuration
+- Completes the cross-compilation infrastructure from v0.3.5
+
 ## [0.3.5] - 2025-12-02
 
 ### Fixed

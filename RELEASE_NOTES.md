@@ -1,10 +1,214 @@
-# Release Notes - Version 0.3.5
+# Release Notes - Version 0.3.6
 
 **Release Date:** December 2, 2025
 
 ## Overview
 
-Version 0.3.5 fixes critical cross-compilation build failures affecting ARMv7, musl, and i686 targets. By integrating cross-rs, a Docker-based cross-compilation tool, this release ensures reliable builds for all 11 platform variants. This maintenance release resolves the v0.3.4 release workflow failure and enables successful artifact generation for embedded systems and containerized deployments.
+Version 0.3.6 fixes the aarch64 (ARM64 GNU) build failure in GitHub Actions by properly configuring the cross-compilation linker. This completes the cross-compilation infrastructure improvements started in v0.3.5, ensuring all 11 platform variants build successfully in CI/CD.
+
+## Critical Fix: aarch64 Linker Configuration
+
+### What Was Broken
+
+The v0.3.5 release workflow failed for the `aarch64-unknown-linux-gnu` target:
+- **Build step failed** with linker errors
+- gcc-aarch64-linux-gnu was installed but not configured
+- cargo didn't know which linker to use for cross-compilation
+- GitHub Actions job 56984631447 failed
+
+### The Problem
+
+While the cross-compiler toolchain was installed correctly:
+```yaml
+- Install gcc-aarch64-linux-gnu  # ✅ Installed
+- cargo build --target aarch64-unknown-linux-gnu  # ❌ Failed - no linker configured
+```
+
+cargo needs to be explicitly told which linker to use for each cross-compilation target.
+
+### The Solution
+
+Configured the linker via environment variable during toolchain installation:
+```yaml
+- Install gcc-aarch64-linux-gnu
+- Set CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+- cargo build --target aarch64-unknown-linux-gnu  # ✅ Success
+```
+
+## Technical Details
+
+### Environment Variable Convention
+
+cargo uses a specific naming pattern for linker configuration:
+- Format: `CARGO_TARGET_<TRIPLE>_LINKER`
+- Triple in uppercase with hyphens replaced by underscores
+- Example: `aarch64-unknown-linux-gnu` → `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER`
+
+### Why This Matters
+
+1. **Native builds**: cargo finds the system linker automatically
+2. **Cross-compilation**: cargo needs explicit configuration
+3. **CI/CD environments**: Must set environment variables for each target
+
+### Workflow Changes
+
+**Before (v0.3.5 - Failed)**:
+```yaml
+- name: Install cross-compilation tools
+  run: |
+    sudo apt-get install -y gcc-aarch64-linux-gnu
+    # ❌ Missing linker configuration
+```
+
+**After (v0.3.6 - Fixed)**:
+```yaml
+- name: Install cross-compilation tools
+  run: |
+    sudo apt-get install -y gcc-aarch64-linux-gnu
+    echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+    # ✅ Linker configured
+```
+
+## All Platforms Now Building Successfully
+
+✅ **Linux (6 variants)**:
+- x86_64 GNU ✅ (native)
+- x86_64 musl ✅ (cross-rs)
+- ARM64 GNU ✅ (native with linker config) - **FIXED in v0.3.6**
+- ARM64 musl ✅ (cross-rs)
+- ARMv7 ✅ (cross-rs) - Fixed in v0.3.5
+- i686 ✅ (cross-rs)
+
+✅ **macOS (2 variants)**:
+- x86_64 Intel ✅
+- ARM64 Apple Silicon ✅
+
+✅ **Windows (3 variants)**:
+- x86_64 ✅
+- i686 ✅
+- ARM64 ✅
+
+## Build System Summary
+
+### Targets Using cross-rs (Docker-based)
+- armv7-unknown-linux-gnueabihf
+- x86_64-unknown-linux-musl
+- aarch64-unknown-linux-musl
+- i686-unknown-linux-gnu
+
+### Targets Using Native cargo (with explicit linker)
+- **aarch64-unknown-linux-gnu** (linker: gcc-aarch64-linux-gnu)
+- x86_64-unknown-linux-gnu (default linker)
+
+### Targets Using Native Toolchains
+- All macOS targets (Apple toolchain)
+- All Windows targets (MSVC toolchain)
+
+## Verification
+
+All 11 platform artifacts include:
+- ✅ Compiled binary
+- ✅ SHA256 checksum file
+- ✅ Verified build success in CI/CD
+- ✅ Proper cross-compilation configuration
+
+## Breaking Changes
+
+None. This is a CI/CD build configuration fix with no runtime changes.
+
+## Upgrade Notes
+
+If you're on v0.3.5:
+- ARM64 GNU binary was missing from releases
+- **Upgrade to v0.3.6** for complete platform coverage
+- All other platforms from v0.3.5 work correctly
+
+Upgrade process:
+1. Download the appropriate binary for your platform
+2. Verify using the SHA256 checksum
+3. Replace your existing binary
+4. No configuration changes needed
+
+## For Developers
+
+### Local Cross-Compilation Setup
+
+If you're cross-compiling locally for ARM64:
+
+```bash
+# Install cross-compiler
+sudo apt-get install gcc-aarch64-linux-gnu
+
+# Set linker (option 1: environment variable)
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+cargo build --release --target aarch64-unknown-linux-gnu
+
+# Set linker (option 2: .cargo/config.toml)
+# Create .cargo/config.toml with:
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+```
+
+### CI/CD Integration
+
+For GitHub Actions or other CI systems:
+```yaml
+- name: Setup ARM64 cross-compilation
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y gcc-aarch64-linux-gnu
+    echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+- name: Build for ARM64
+  run: cargo build --release --target aarch64-unknown-linux-gnu
+```
+
+## Version History Context
+
+### v0.3.4
+- Added SHA256 checksums for security
+- Initial multi-platform release attempt
+- ARMv7 and other complex targets failed
+
+### v0.3.5
+- Integrated cross-rs for complex targets
+- Fixed ARMv7, musl, and i686 builds
+- aarch64 GNU still failing (linker not configured)
+
+### v0.3.6 (Current)
+- Fixed aarch64 GNU linker configuration
+- **All 11 platforms now building successfully**
+- Complete cross-compilation infrastructure
+
+## Known Limitations
+
+- First-time builds may be slower (Docker image downloads for cross-rs targets)
+- Windows ARM64 still experimental (limited testing hardware)
+- cross-rs requires Docker for local development
+
+## What's Next
+
+With complete platform coverage established, v0.3.7 may include:
+- Additional platform support (FreeBSD, NetBSD)
+- RISC-V architecture support
+- Enhanced parallel stream support
+- IPv6 improvements
+- Performance optimizations
+
+## Getting Help
+
+- **Documentation**: [README.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/main/README.md)
+- **Build Issues**: [GitHub Issues](https://github.com/arunkumar-mourougappane/rperf3-rs/issues)
+- **Cross-compilation Guide**: See workflow files for reference
+- **Discussions**: [GitHub Discussions](https://github.com/arunkumar-mourougappane/rperf3-rs/discussions)
+
+## Contributors
+
+- Arunkumar Mourougappane (@arunkumar-mourougappane)
+
+## Full Changelog
+
+See [CHANGELOG.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/main/CHANGELOG.md) for detailed changes across all versions.
 
 ## Critical Fix: Cross-Compilation Build System
 
