@@ -18,6 +18,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Historical data storage
 - Web UI for results visualization
 
+## [0.3.9] - 2025-12-03
+
+### Added
+
+- **Comprehensive API Documentation**: Added extensive Rust documentation for all public-facing APIs
+  - Enhanced module-level documentation in `lib.rs` with detailed examples and architecture overview
+  - Documented all types in `config.rs`: `Protocol`, `Mode`, and `Config` with 11 builder methods
+  - Documented `Client` struct with all public methods (`new()`, `with_callback()`, `run()`, `get_measurements()`)
+  - Documented `ProgressEvent` enum (4 variants) and `ProgressCallback` trait with usage examples
+  - Documented `Server` struct with constructor, `run()`, and `get_measurements()` methods
+  - Documented `Error` enum (6 variants) and `Result` type alias with error handling examples
+  - Documented `Measurements` struct and helper functions (`get_system_info()`, `get_connection_info()`, `get_tcp_stats()`)
+  - Added platform-specific documentation notes for Linux vs non-Linux features
+  - Included 30+ code examples demonstrating API usage patterns
+  - All documentation compiles without warnings
+
+- **Documentation Testing in CI**: Added dedicated doctest job to GitHub Actions workflow
+  - Runs `cargo test --doc` to validate all documentation examples
+  - Runs `cargo doc` with `-D warnings` flag to catch documentation issues
+  - Ensures documentation stays up-to-date and accurate
+  - Uses caching for faster CI builds
+
+### Changed
+
+- **Documentation Quality**: Enhanced all public API documentation with:
+  - Clear descriptions of purpose and behavior
+  - Complete parameter and return value documentation
+  - Error conditions and edge cases
+  - Platform-specific feature notes (Linux TCP stats, file descriptors)
+  - Real-world usage examples for common scenarios
+
+### Technical Details
+
+- Documentation can be generated locally with `cargo doc --open`
+- All examples are tested in CI to ensure they remain valid
+- Documentation follows Rust best practices with proper linking and formatting
+- Platform-specific features (Linux TCP_INFO) are clearly marked
+- Total additions: 967 lines of documentation across 6 files
+
 ## [0.3.8] - 2025-12-02
 
 ### Added
