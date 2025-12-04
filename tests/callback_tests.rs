@@ -15,6 +15,7 @@ impl TestCallback {
         }
     }
 
+    #[allow(dead_code)]
     fn get_events(&self) -> Vec<ProgressEvent> {
         self.events.lock().unwrap().clone()
     }
@@ -54,11 +55,13 @@ async fn test_custom_callback_struct() {
 
     // Verify events were received
     let events = events_ref.lock().unwrap();
-    assert!(events.len() > 0, "Should have received events");
+    assert!(!events.is_empty(), "Should have received events");
 
     // Check for TestStarted event
     assert!(
-        events.iter().any(|e| matches!(e, ProgressEvent::TestStarted)),
+        events
+            .iter()
+            .any(|e| matches!(e, ProgressEvent::TestStarted)),
         "Should have received TestStarted event"
     );
 
@@ -68,7 +71,7 @@ async fn test_custom_callback_struct() {
         .filter(|e| matches!(e, ProgressEvent::IntervalUpdate { .. }))
         .collect();
     assert!(
-        interval_updates.len() > 0,
+        !interval_updates.is_empty(),
         "Should have received at least one IntervalUpdate event"
     );
 
@@ -111,14 +114,14 @@ async fn test_closure_callback() {
 
     // Verify events
     let captured_events = events.lock().unwrap();
-    assert!(captured_events.len() > 0, "Should have captured events");
+    assert!(!captured_events.is_empty(), "Should have captured events");
 }
 
 #[tokio::test]
 async fn test_udp_metrics_in_callbacks() {
     // This test verifies that UDP metrics are accessible in callbacks
     // We use TCP to verify the callback mechanism works, then check UDP field accessibility
-    
+
     let server_config = Config::server(15203).with_protocol(Protocol::Tcp);
     let server = Server::new(server_config);
 
@@ -167,20 +170,41 @@ async fn test_udp_metrics_in_callbacks() {
                 } => {
                     *completion_ref.lock().unwrap() = true;
                     // Verify all UDP metric fields exist and are accessible
-                    assert!(total_packets.is_some() || total_packets.is_none(), "Field accessible");
-                    assert!(jitter_ms.is_some() || jitter_ms.is_none(), "Field accessible");
-                    assert!(lost_packets.is_some() || lost_packets.is_none(), "Field accessible");
-                    assert!(lost_percent.is_some() || lost_percent.is_none(), "Field accessible");
-                    assert!(out_of_order.is_some() || out_of_order.is_none(), "Field accessible");
+                    assert!(
+                        total_packets.is_some() || total_packets.is_none(),
+                        "Field accessible"
+                    );
+                    assert!(
+                        jitter_ms.is_some() || jitter_ms.is_none(),
+                        "Field accessible"
+                    );
+                    assert!(
+                        lost_packets.is_some() || lost_packets.is_none(),
+                        "Field accessible"
+                    );
+                    assert!(
+                        lost_percent.is_some() || lost_percent.is_none(),
+                        "Field accessible"
+                    );
+                    assert!(
+                        out_of_order.is_some() || out_of_order.is_none(),
+                        "Field accessible"
+                    );
                 }
                 _ => {}
             }
         });
 
     let _ = client.run().await;
-    
-    assert!(*has_interval.lock().unwrap(), "Should have received interval updates");
-    assert!(*has_completion.lock().unwrap(), "Should have received completion event");
+
+    assert!(
+        *has_interval.lock().unwrap(),
+        "Should have received interval updates"
+    );
+    assert!(
+        *has_completion.lock().unwrap(),
+        "Should have received completion event"
+    );
 }
 
 #[tokio::test]
@@ -216,7 +240,7 @@ async fn test_tcp_callback_no_udp_metrics() {
                 // For TCP, UDP-specific metrics should be None
                 // (Currently they're set to Some(0), but the contract is they're Optional)
                 *tcp_flag.lock().unwrap() = true;
-                
+
                 // Just verify the fields exist and are accessible
                 let _packets = total_packets;
                 let _jitter = jitter_ms;
@@ -236,18 +260,18 @@ async fn test_tcp_callback_no_udp_metrics() {
 #[test]
 fn test_callback_trait_implementation() {
     // Test that we can create callbacks in different ways
-    
+
     // 1. Closure
     let _closure_callback = |event: ProgressEvent| {
         println!("Event: {:?}", event);
     };
-    
+
     // 2. Function
     fn handle_event(event: ProgressEvent) {
         println!("Event: {:?}", event);
     }
     let _fn_callback = handle_event;
-    
+
     // 3. Custom struct
     struct MyCallback;
     impl ProgressCallback for MyCallback {
@@ -256,7 +280,7 @@ fn test_callback_trait_implementation() {
         }
     }
     let _custom_callback = MyCallback;
-    
+
     // All these should implement ProgressCallback
-    assert!(true, "All callback types compiled successfully");
+    // All callback types compiled successfully - no runtime assertion needed
 }

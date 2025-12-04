@@ -506,7 +506,7 @@ impl Client {
         }
 
         let final_measurements = self.measurements.get();
-        
+
         // Notify callback of completion
         self.notify(ProgressEvent::TestCompleted {
             total_bytes: final_measurements.total_bytes_sent
@@ -519,7 +519,7 @@ impl Client {
             lost_percent: None,
             out_of_order: None,
         });
-        
+
         if !self.config.json {
             print_results(&final_measurements);
         } else {
@@ -546,7 +546,7 @@ impl Client {
         // For UDP, we still need a TCP control connection for setup
         // This is similar to how iperf3 works
         let mut control_stream = TcpStream::connect(server_addr).await?;
-        
+
         // Send setup message via TCP
         let setup = Message::setup(
             format!("{:?}", self.config.protocol),
@@ -605,7 +605,7 @@ impl Client {
 
         // Close control connection
         drop(control_stream);
-        
+
         result
     }
 
@@ -626,13 +626,13 @@ impl Client {
         // Calculate bandwidth limiting parameters
         // Strategy: Send packets without delay, but track bandwidth and sleep when needed
         let target_bytes_per_sec = self.config.bandwidth.map(|bw| bw / 8);
-        
+
         let mut total_bytes_sent = 0u64;
         let mut last_bandwidth_check = start;
 
         while start.elapsed() < self.config.duration {
             let packet = crate::udp_packet::create_packet(sequence, payload_size);
-            
+
             match socket.send(&packet).await {
                 Ok(n) => {
                     self.measurements.record_bytes_sent(0, n as u64);
@@ -645,21 +645,22 @@ impl Client {
                     // Bandwidth limiting: check if we're sending too fast
                     if let Some(target_bps) = target_bytes_per_sec {
                         let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
-                        
+
                         // Check every 1ms for more accurate rate control
                         if elapsed >= 0.001 {
                             let expected_bytes = (target_bps as f64 * elapsed) as u64;
                             let bytes_sent_in_period = total_bytes_sent;
-                            
+
                             if bytes_sent_in_period > expected_bytes {
                                 // We're sending too fast, sleep to catch up
                                 let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
                                 let sleep_time = bytes_ahead / target_bps as f64;
-                                if sleep_time > 0.0001 {  // Only sleep if > 0.1ms
+                                if sleep_time > 0.0001 {
+                                    // Only sleep if > 0.1ms
                                     time::sleep(Duration::from_secs_f64(sleep_time)).await;
                                 }
                             }
-                            
+
                             // Reset counters
                             last_bandwidth_check = Instant::now();
                             total_bytes_sent = 0;
@@ -789,28 +790,27 @@ impl Client {
 
         while start.elapsed() < self.config.duration {
             // Set a timeout for recv to check duration periodically
-            let timeout = tokio::time::timeout(
-                Duration::from_millis(100),
-                socket.recv(&mut buffer)
-            );
+            let timeout =
+                tokio::time::timeout(Duration::from_millis(100), socket.recv(&mut buffer));
 
             match timeout.await {
                 Ok(Ok(n)) => {
                     // Try to parse as UDP packet to get sequence and timestamp
-                    if let Some((header, _payload)) = crate::udp_packet::parse_packet(&buffer[..n]) {
+                    if let Some((header, _payload)) = crate::udp_packet::parse_packet(&buffer[..n])
+                    {
                         // Get current receive timestamp
                         let recv_timestamp_us = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .expect("Time went backwards")
                             .as_micros() as u64;
-                        
+
                         self.measurements.record_udp_packet_received(
                             header.sequence,
                             header.timestamp_us,
                             recv_timestamp_us,
                         );
                     }
-                    
+
                     self.measurements.record_bytes_received(0, n as u64);
                     interval_bytes += n as u64;
                     interval_packets += 1;
@@ -1182,7 +1182,7 @@ fn print_results(measurements: &crate::Measurements) {
         "Bandwidth: {:.2} Mbps",
         measurements.total_bits_per_second() / 1_000_000.0
     );
-    
+
     // Show UDP statistics if available
     if measurements.total_packets > 0 {
         // Calculate loss statistics
@@ -1194,25 +1194,25 @@ fn print_results(measurements: &crate::Measurements) {
             // Sending mode: no loss calculation
             (0, measurements.total_packets)
         };
-        
+
         let loss_percent = if expected > 0 {
             (lost as f64 / expected as f64) * 100.0
         } else {
             0.0
         };
-        
+
         if measurements.total_bytes_received > 0 {
             // Receiving mode: show full statistics
             println!(
                 "UDP: {} packets received, {} lost ({:.2}%), {:.3} ms jitter",
-                expected,
-                lost,
-                loss_percent,
-                measurements.jitter_ms
+                expected, lost, loss_percent, measurements.jitter_ms
             );
-            
+
             if measurements.out_of_order_packets > 0 {
-                println!("     {} out-of-order packets", measurements.out_of_order_packets);
+                println!(
+                    "     {} out-of-order packets",
+                    measurements.out_of_order_packets
+                );
             }
         } else {
             // Sending mode - loss/jitter can't be measured
@@ -1222,6 +1222,6 @@ fn print_results(measurements: &crate::Measurements) {
             );
         }
     }
-    
+
     println!("- - - - - - - - - - - - - - - - - - - - - - - - -\n");
 }

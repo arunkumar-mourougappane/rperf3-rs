@@ -168,7 +168,7 @@ impl Server {
             match socket.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     debug!("Received {} bytes from {}", len, addr);
-                    
+
                     // Parse UDP packet
                     if let Some((header, _payload)) = crate::udp_packet::parse_packet(&buf[..len]) {
                         // Get current receive timestamp
@@ -176,7 +176,7 @@ impl Server {
                             .duration_since(std::time::UNIX_EPOCH)
                             .expect("Time went backwards")
                             .as_micros() as u64;
-                        
+
                         // Record packet with timing information
                         self.measurements.record_udp_packet_received(
                             header.sequence,
@@ -184,7 +184,7 @@ impl Server {
                             recv_timestamp_us,
                         );
                         self.measurements.record_bytes_received(0, len as u64);
-                        
+
                         interval_bytes += len as u64;
                         interval_packets += 1;
                     } else {
@@ -284,7 +284,7 @@ async fn handle_tcp_client(
     // Read setup message
     let setup_msg = deserialize_message(&mut stream).await?;
 
-    let (protocol, duration, reverse, _parallel, bandwidth, buffer_size) = match setup_msg {
+    let (protocol, duration, reverse, _parallel, bandwidth, _buffer_size) = match setup_msg {
         Message::Setup {
             version: _,
             protocol,
@@ -299,7 +299,14 @@ async fn handle_tcp_client(
                 "Client {} setup: protocol={}, duration={}s, reverse={}, parallel={}",
                 addr, protocol, duration, reverse, parallel
             );
-            (protocol, Duration::from_secs(duration), reverse, parallel, bandwidth, buffer_size)
+            (
+                protocol,
+                Duration::from_secs(duration),
+                reverse,
+                parallel,
+                bandwidth,
+                buffer_size,
+            )
         }
         _ => {
             return Err(Error::Protocol("Expected Setup message".to_string()));
@@ -312,13 +319,10 @@ async fn handle_tcp_client(
         return handle_udp_test(
             stream,
             addr,
-            duration,
-            reverse,
-            bandwidth,
-            buffer_size,
             config,
             measurements,
-        ).await;
+        )
+        .await;
     }
 
     // Send setup acknowledgment for TCP
@@ -382,13 +386,13 @@ async fn handle_tcp_client(
 async fn handle_udp_test(
     mut control_stream: TcpStream,
     client_addr: SocketAddr,
-    duration: Duration,
-    reverse: bool,
-    bandwidth: Option<u64>,
-    buffer_size: usize,
     config: Config,
     measurements: MeasurementsCollector,
 ) -> Result<()> {
+    let duration = config.duration;
+    let reverse = config.reverse;
+    let bandwidth = config.bandwidth;
+    let buffer_size = config.buffer_size;
     // Send setup acknowledgment
     let ack = Message::setup_ack(config.port, format!("{}", client_addr));
     let ack_bytes = serialize_message(&ack)?;
@@ -410,7 +414,15 @@ async fn handle_udp_test(
 
     if reverse {
         // Server sends UDP data to client
-        send_udp_data(client_addr, duration, bandwidth, buffer_size, &measurements, &config).await?;
+        send_udp_data(
+            client_addr,
+            duration,
+            bandwidth,
+            buffer_size,
+            &measurements,
+            &config,
+        )
+        .await?;
     } else {
         // Server receives UDP data from client
         receive_udp_data(duration, &measurements, &config).await?;
@@ -436,15 +448,15 @@ async fn send_udp_data(
     // Bind to the server's configured port for UDP
     let bind_addr = format!("0.0.0.0:{}", config.port);
     let socket = UdpSocket::bind(&bind_addr).await?;
-    
+
     info!("UDP server waiting for client on port {}", config.port);
-    
+
     // Wait for first packet from client to discover their UDP port
     let mut buf = vec![0u8; 65536];
     let (_, client_udp_addr) = socket.recv_from(&mut buf).await?;
-    
+
     info!("UDP client address discovered: {}", client_udp_addr);
-    
+
     // Now connect to client's UDP address
     socket.connect(client_udp_addr).await?;
 
@@ -468,7 +480,7 @@ async fn send_udp_data(
 
     while start.elapsed() < duration {
         let packet = crate::udp_packet::create_packet(sequence, payload_size);
-        
+
         match socket.send(&packet).await {
             Ok(n) => {
                 measurements.record_bytes_sent(0, n as u64);
@@ -481,11 +493,11 @@ async fn send_udp_data(
                 // Bandwidth limiting
                 if let Some(target_bps) = target_bytes_per_sec {
                     let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
-                    
+
                     if elapsed >= 0.001 {
                         let expected_bytes = (target_bps as f64 * elapsed) as u64;
                         let bytes_sent_in_period = total_bytes_sent;
-                        
+
                         if bytes_sent_in_period > expected_bytes {
                             let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
                             let sleep_time = bytes_ahead / target_bps as f64;
@@ -493,7 +505,7 @@ async fn send_udp_data(
                                 time::sleep(Duration::from_secs_f64(sleep_time)).await;
                             }
                         }
-                        
+
                         last_bandwidth_check = Instant::now();
                         total_bytes_sent = 0;
                     }
@@ -553,18 +565,18 @@ async fn receive_udp_data(
     // Bind UDP socket on the server port
     let bind_addr = format!("0.0.0.0:{}", config.port);
     let socket = UdpSocket::bind(&bind_addr).await?;
-    
+
     info!("UDP server listening for packets on port {}", config.port);
-    
+
     let start = Instant::now();
     let mut buf = vec![0u8; 65536];
-    
+
     // Receive packets until duration expires or timeout
     while start.elapsed() < duration {
         // Set a timeout so we can check elapsed time
         let remaining = duration.saturating_sub(start.elapsed());
         let timeout = remaining.min(Duration::from_millis(100));
-        
+
         match tokio::time::timeout(timeout, socket.recv_from(&mut buf)).await {
             Ok(Ok((n, _addr))) => {
                 // Parse UDP packet
@@ -573,7 +585,7 @@ async fn receive_udp_data(
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_micros() as u64;
-                    
+
                     measurements.record_bytes_received(0, n as u64);
                     measurements.record_udp_packet_received(
                         header.sequence,
@@ -592,7 +604,7 @@ async fn receive_udp_data(
             }
         }
     }
-    
+
     measurements.set_duration(start.elapsed());
     Ok(())
 }
@@ -625,11 +637,11 @@ async fn send_data(
                 // Bandwidth limiting
                 if let Some(target_bps) = target_bytes_per_sec {
                     let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
-                    
+
                     if elapsed >= 0.001 {
                         let expected_bytes = (target_bps as f64 * elapsed) as u64;
                         let bytes_sent_in_period = total_bytes_sent;
-                        
+
                         if bytes_sent_in_period > expected_bytes {
                             let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
                             let sleep_time = bytes_ahead / target_bps as f64;
@@ -637,7 +649,7 @@ async fn send_data(
                                 time::sleep(Duration::from_secs_f64(sleep_time)).await;
                             }
                         }
-                        
+
                         last_bandwidth_check = Instant::now();
                         total_bytes_sent = 0;
                     }

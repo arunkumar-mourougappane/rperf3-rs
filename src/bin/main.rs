@@ -6,24 +6,25 @@ use std::time::Duration;
 /// Examples: "100M" = 100 Mbps, "1G" = 1 Gbps, "500K" = 500 Kbps
 fn parse_bandwidth(s: &str) -> anyhow::Result<u64> {
     let s = s.trim();
-    
+
     if s.is_empty() {
         anyhow::bail!("Bandwidth cannot be empty");
     }
-    
+
     let (number_str, multiplier) = if s.ends_with('G') || s.ends_with('g') {
-        (&s[..s.len()-1], 1_000_000_000u64)
+        (&s[..s.len() - 1], 1_000_000_000u64)
     } else if s.ends_with('M') || s.ends_with('m') {
-        (&s[..s.len()-1], 1_000_000u64)
+        (&s[..s.len() - 1], 1_000_000u64)
     } else if s.ends_with('K') || s.ends_with('k') {
-        (&s[..s.len()-1], 1_000u64)
+        (&s[..s.len() - 1], 1_000u64)
     } else {
         (s, 1u64)
     };
-    
-    let number: u64 = number_str.parse()
+
+    let number: u64 = number_str
+        .parse()
         .map_err(|_| anyhow::anyhow!("Invalid bandwidth number: {}", number_str))?;
-    
+
     Ok(number * multiplier)
 }
 
@@ -169,7 +170,7 @@ async fn main() -> anyhow::Result<()> {
             interval,
         } => {
             let protocol = if udp { Protocol::Udp } else { Protocol::Tcp };
-            
+
             // Use 1500 bytes for UDP if default length was specified
             let buffer_size = if udp && length == 131072 {
                 1500
