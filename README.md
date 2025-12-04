@@ -4,51 +4,50 @@
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
-**rperf3-rs** is a network throughput measurement tool written in Rust, inspired by iperf3. It aims to provide bandwidth testing for TCP and UDP protocols with a focus on memory safety, async I/O, and ease of use both as a command-line tool and as a library.
+A high-performance network throughput measurement tool written in Rust, inspired by iperf3. Provides accurate bandwidth testing for TCP and UDP protocols with memory safety, async I/O, and comprehensive metrics.
 
 ## What is rperf3-rs?
 
-rperf3-rs allows you to measure the maximum achievable bandwidth between two network endpoints. Whether you're diagnosing network performance issues, validating infrastructure upgrades, or benchmarking network equipment, rperf3-rs provides detailed, real-time statistics about your network's capabilities.
+rperf3-rs is a modern network performance measurement tool that allows you to measure the maximum achievable bandwidth between two network endpoints. Whether you're diagnosing network performance issues, validating infrastructure upgrades, or benchmarking network equipment, rperf3-rs provides detailed, real-time statistics about your network's capabilities.
 
 Built from the ground up in Rust, rperf3-rs leverages modern async I/O (via Tokio) to achieve high throughput while maintaining memory safety guarantees. Unlike traditional C-based tools, rperf3-rs eliminates entire classes of bugs (buffer overflows, use-after-free, data races) through Rust's compile-time checks.
 
-### Key Capabilities
-
-- **Accurate Bandwidth Measurement**: Measure TCP and UDP throughput with sub-second interval reporting
-- **Bidirectional Testing**: Test both normal mode (client → server) and reverse mode (server → client)
-- **Detailed TCP Statistics**: On Linux, get comprehensive TCP metrics including retransmits, RTT, congestion window, and PMTU
-- **UDP Packet Loss & Jitter**: Measure packet loss percentage, jitter, and detect out-of-order packets for UDP flows
-- **Dual Interface**: Use as a standalone CLI tool or integrate as a Rust library with full async support
-- **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
-- **JSON Output**: Machine-readable output compatible with automation and monitoring systems
-- **Cross-Platform**: Native support for Linux, macOS, and Windows across multiple architectures
-
 ### Why rperf3-rs?
 
-**Performance**: Built on Tokio's async runtime with zero-copy buffer management, rperf3-rs achieves 25-30 Gbps throughput on localhost tests.
+**Memory Safety**: Rust's ownership system eliminates memory safety bugs at compile time, making rperf3-rs more reliable than C-based alternatives. No buffer overflows, no use-after-free, no data races.
 
-**Safety**: Rust's ownership system eliminates memory safety bugs at compile time, making rperf3-rs more reliable than C-based alternatives.
+**High Performance**: Built on Tokio's async runtime with optimized buffer management, rperf3-rs achieves 25-30 Gbps throughput on localhost tests, matching or exceeding traditional tools.
 
-**Developer-Friendly**: Clean API design with builder patterns, comprehensive error handling, and extensive documentation make integration straightforward.
+**Developer-Friendly**: Clean API design with builder patterns, comprehensive error handling, and extensive documentation make integration straightforward. Use it as a CLI tool or embed it as a library.
 
-**Modern Architecture**: Async/await syntax, modular design, and thread-safe statistics collection provide a solid foundation for network testing applications.
+**Modern Architecture**: Async/await syntax, modular design, and thread-safe statistics collection provide a solid foundation for building network testing applications.
+
+**Full-Featured**: Supports TCP and UDP testing, bidirectional tests, bandwidth limiting, packet loss and jitter measurement, real-time callbacks, and JSON output for automation.
 
 ## Features
 
-- **TCP and UDP Testing**: Measure throughput for both TCP and UDP protocols
-- **Bidirectional Testing**: Normal mode (client sends) and reverse mode (server sends)
-- **Real-time Statistics**: Periodic interval reporting with bandwidth measurements
-- **Progress Callbacks**: Get real-time updates during test execution via callbacks
-- **Multiple Streams**: Support for parallel stream testing
-- **JSON Output**: Machine-readable output format for automation
-- **Library and Binary**: Use as a Rust library or standalone CLI tool
-- **Async I/O**: Built on Tokio for high-performance async operations
+- **TCP & UDP Testing**: Measure throughput for both reliable and unreliable protocols
+- **Bidirectional Testing**: Normal mode (client → server) and reverse mode (server → client)
+- **Bandwidth Limiting**: Control send rate with K/M/G notation (e.g., 100M = 100 Mbps)
+- **UDP Metrics**: Packet loss percentage, jitter (RFC 3550), and out-of-order detection
+- **TCP Statistics**: Retransmits, RTT, congestion window, and PMTU (Linux)
+- **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
+- **JSON Output**: Machine-readable output compatible with automation systems
+- **Parallel Streams**: Multiple concurrent connections for aggregate testing
+- **Library & CLI**: Use as a standalone tool or integrate as a Rust library
+- **Cross-Platform**: Linux, macOS, and Windows support
 
 ## Quick Start
 
 ### Installation
 
-Build from source:
+**From crates.io** (when published):
+
+```bash
+cargo install rperf3
+```
+
+**From source**:
 
 ```bash
 git clone https://github.com/arunkumar-mourougappane/rperf3-rs.git
@@ -56,83 +55,66 @@ cd rperf3-rs
 cargo build --release
 ```
 
-The binary will be available at `target/release/rperf3`.
+Binary available at `target/release/rperf3`.
 
 ### Basic Usage
-
-**Start a server:**
-
-```bash
-rperf3 server
-```
-
-**Run a client test:**
-
-```bash
-rperf3 client <server-address>
-```
-
-**Example test:**
 
 ```bash
 # Terminal 1 - Start server
 ./target/release/rperf3 server
 
-# Terminal 2 - Run 10-second test
-./target/release/rperf3 client 127.0.0.1 --time 10
+# Terminal 2 - Run client test
+./target/release/rperf3 client 127.0.0.1
 ```
 
-## Usage
+## Usage Examples
 
-### Server Mode
-
-Start a server on the default port (5201):
+### TCP Tests
 
 ```bash
-rperf3 server
-```
+# Basic TCP test (10 seconds)
+rperf3 client 192.168.1.100
 
-Custom port and UDP:
-
-```bash
-# TCP server on port 8080
-rperf3 server --port 8080
-
-# UDP server
-rperf3 server --udp
-
-# Bind to specific address
-rperf3 server --bind 192.168.1.100
-```
-
-### Client Mode
-
-Basic TCP test:
-
-```bash
-rperf3 client <server-address>
-```
-
-Common options:
-
-```bash
-# 30-second test
-rperf3 client 192.168.1.100 --time 30
-
-# UDP test with 100 Mbps target bandwidth
-rperf3 client 192.168.1.100 --udp --bandwidth 100
+# 30-second test with custom interval
+rperf3 client 192.168.1.100 -t 30 -i 2
 
 # Reverse mode (server sends data)
-rperf3 client 192.168.1.100 --reverse
+rperf3 client 192.168.1.100 -R
 
-# Custom buffer size and parallel streams
-rperf3 client 192.168.1.100 --length 262144 --parallel 4
+# Reverse mode with bandwidth limiting
+rperf3 client 192.168.1.100 -R -b 200M
 
-# JSON output for automation
-rperf3 client 192.168.1.100 --json
+# Parallel streams
+rperf3 client 192.168.1.100 -P 4
+```
 
-# Custom interval reporting (every 2 seconds)
-rperf3 client 192.168.1.100 --interval 2
+### UDP Tests
+
+```bash
+# UDP test with 100 Mbps target
+rperf3 client 192.168.1.100 -u -b 100M
+
+# UDP reverse mode with bandwidth limit
+rperf3 client 192.168.1.100 -u -R -b 50M
+
+# UDP with custom buffer size
+rperf3 client 192.168.1.100 -u -b 1G -l 8192
+```
+
+### Server Options
+
+```bash
+# Default server (port 5201)
+rperf3 server
+
+# Custom port
+rperf3 server -p 8080
+
+# Bind to specific address
+rperf3 server -b 192.168.1.100
+
+# JSON output
+rperf3 server -J
 ```
 
 ## Library Usage
@@ -141,11 +123,16 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rperf3 = { git = "https://github.com/arunkumar-mourougappane/rperf3-rs" }
+# From crates.io (when published)
+rperf3 = "0.4"
+
+# Or from git
+# rperf3 = { git = "https://github.com/arunkumar-mourougappane/rperf3-rs" }
+
 tokio = { version = "1", features = ["full"] }
 ```
 
-### Client Example
+### Basic Client Example
 
 ```rust
 use rperf3::{Client, Config, Protocol};
@@ -153,17 +140,13 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure the test
-    let config = Config::client("127.0.0.1".to_string(), 5201)
+    let config = Config::client("192.168.1.100".to_string(), 5201)
         .with_protocol(Protocol::Tcp)
-        .with_duration(Duration::from_secs(10))
-        .with_buffer_size(128 * 1024);
+        .with_duration(Duration::from_secs(10));
 
-    // Run the test
     let client = Client::new(config)?;
     client.run().await?;
 
-    // Get results
     let measurements = client.get_measurements();
     println!("Bandwidth: {:.2} Mbps",
              measurements.total_bits_per_second() / 1_000_000.0);
@@ -172,38 +155,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Client with Progress Callback
-
-Monitor test progress in real-time using callbacks:
+### UDP Test with Metrics
 
 ```rust
-use rperf3::{Client, Config, ProgressEvent, Protocol};
+use rperf3::{Client, Config, Protocol};
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::client("127.0.0.1".to_string(), 5201)
-        .with_protocol(Protocol::Tcp)
+    let config = Config::client("192.168.1.100".to_string(), 5201)
+        .with_protocol(Protocol::Udp)
+        .with_bandwidth(100_000_000) // 100 Mbps
         .with_duration(Duration::from_secs(10));
 
-    // Create client with callback
+    let client = Client::new(config)?;
+    client.run().await?;
+
+    let measurements = client.get_measurements();
+    println!("Bandwidth: {:.2} Mbps", 
+             measurements.total_bits_per_second() / 1_000_000.0);
+    println!("Packets: {}, Loss: {} ({:.2}%), Jitter: {:.3} ms",
+             measurements.total_packets,
+             measurements.lost_packets,
+             (measurements.lost_packets as f64 / measurements.total_packets as f64) * 100.0,
+             measurements.jitter_ms);
+
+    Ok(())
+}
+```
+
+### Progress Callbacks
+
+```rust
+use rperf3::{Client, Config, ProgressEvent};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::client("192.168.1.100".to_string(), 5201)
+        .with_duration(Duration::from_secs(10));
+
     let client = Client::new(config)?
         .with_callback(|event: ProgressEvent| {
             match event {
                 ProgressEvent::TestStarted => {
-                    println!("Test started!");
+                    println!("Test started");
                 }
-                ProgressEvent::IntervalUpdate { interval_end, bytes, bits_per_second, .. } => {
-                    println!("{:.1}s: {} bytes @ {:.2} Mbps",
-                        interval_end.as_secs_f64(),
-                        bytes,
-                        bits_per_second / 1_000_000.0);
+                ProgressEvent::IntervalUpdate { bits_per_second, .. } => {
+                    println!("Current: {:.2} Mbps", bits_per_second / 1_000_000.0);
                 }
-                ProgressEvent::TestCompleted { total_bytes, duration, bits_per_second } => {
-                    println!("Completed: {} bytes in {:.2}s @ {:.2} Mbps",
-                        total_bytes,
-                        duration.as_secs_f64(),
-                        bits_per_second / 1_000_000.0);
+                ProgressEvent::TestCompleted { bits_per_second, .. } => {
+                    println!("Average: {:.2} Mbps", bits_per_second / 1_000_000.0);
                 }
                 ProgressEvent::Error(msg) => {
                     eprintln!("Error: {}", msg);
@@ -219,320 +221,172 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Server Example
 
 ```rust
-use rperf3::{Server, Config, Protocol};
+use rperf3::{Server, Config};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::server(5201)
-        .with_protocol(Protocol::Tcp);
-
+    let config = Config::server(5201);
     let server = Server::new(config);
+    
+    println!("Server listening on port 5201");
     server.run().await?;
-
+    
     Ok(())
 }
 ```
 
-## Detailed JSON Output
+## Command-Line Options
 
-When using the `--json` flag, rperf3 outputs comprehensive test results in a structured JSON format similar to iperf3. This includes:
+### Server
 
-**TCP Mode:**
+| Option              | Short | Description              | Default |
+|---------------------|-------|--------------------------|---------|
+| `--port <PORT>`     | `-p`  | Port to listen on        | 5201    |
+| `--bind <ADDRESS>`  | `-b`  | Bind to specific address | 0.0.0.0 |
+| `--udp`             | `-u`  | UDP mode                 | TCP     |
+| `--json`            | `-J`  | JSON output              | false   |
 
-- **Connection Information**: Socket FD, local/remote addresses and ports
-- **System Information**: OS version, hostname, timestamp
-- **Test Configuration**: Protocol, stream count, buffer size, duration, direction
-- **Interval Statistics**: Per-second measurements with bytes and throughput
-- **TCP Statistics**: Retransmits, congestion window, RTT, RTT variance, PMTU (Linux only)
-- **Summary Results**: Sender/receiver totals with min/max/mean statistics
-- **CPU Utilization**: Host and remote CPU usage percentages (when available)
-- **Congestion Algorithm**: TCP congestion control algorithm in use
+### Client
 
-**UDP Mode:**
+| Option                  | Short | Description                     | Default        |
+|-------------------------|-------|---------------------------------|----------------|
+| `<SERVER>`              |       | Server address (required)       | -              |
+| `--port <PORT>`         | `-p`  | Server port                     | 5201           |
+| `--udp`                 | `-u`  | UDP mode                        | TCP            |
+| `--time <SECONDS>`      | `-t`  | Test duration                   | 10             |
+| `--bandwidth <RATE>`    | `-b`  | Target bandwidth (K/M/G suffix) | unlimited (TCP), 1M (UDP) |
+| `--length <BYTES>`      | `-l`  | Buffer/packet size              | 131072 (TCP), 1460 (UDP) |
+| `--parallel <NUM>`      | `-P`  | Number of parallel streams      | 1              |
+| `--reverse`             | `-R`  | Reverse mode (server sends)     | false          |
+| `--json`                | `-J`  | JSON output                     | false          |
+| `--interval <SECONDS>`  | `-i`  | Report interval                 | 1              |
 
-- **Connection Information**: Socket FD, local/remote addresses and ports
-- **System Information**: OS version, hostname, timestamp
-- **Test Configuration**: Protocol, stream count, buffer size, duration, direction
-- **Interval Statistics**: Per-second measurements with bytes, throughput, and packet counts
-- **UDP Statistics**: Jitter (ms), lost packets, packet count, loss percentage, out-of-order packets
-- **Summary Results**: Aggregated statistics with jitter and packet loss metrics
+### Bandwidth Notation
 
-### Example JSON Output
+Use K/M/G suffixes for bandwidth values:
 
-**TCP Mode:**
-
-```bash
-rperf3 client 127.0.0.1 -t 5 --json
-```
-
-Sample output structure:
-
-```json
-{
-  "start": {
-    "connected": [
-      {
-        "socket_fd": 3,
-        "local_host": "127.0.0.1",
-        "local_port": 45678,
-        "remote_host": "127.0.0.1",
-        "remote_port": 5201
-      }
-    ],
-    "version": "rperf3 0.1.0",
-    "system_info": "linux x86_64 hostname",
-    "timestamp": {
-      "time": "Wed, 3 Dec 2025 03:16:18 +0000",
-      "timesecs": 1764731778
-    },
-    "test_start": {
-      "protocol": "Tcp",
-      "num_streams": 1,
-      "blksize": 131072,
-      "duration": 5,
-      "reverse": false
-    }
-  },
-  "intervals": [
-    {
-      "streams": [
-        {
-          "socket": 3,
-          "start": 0.0,
-          "end": 1.0,
-          "seconds": 1.0,
-          "bytes": 1000000000,
-          "bits_per_second": 8000000000.0,
-          "retransmits": 0,
-          "snd_cwnd": 43680,
-          "rtt": 123,
-          "omitted": false
-        }
-      ],
-      "sum": {
-        /* aggregate stats */
-      }
-    }
-  ],
-  "end": {
-    "sum_sent": {
-      "bytes": 5000000000,
-      "bits_per_second": 8000000000.0,
-      "retransmits": 5,
-      "max_snd_cwnd": 87360
-    },
-    "cpu_utilization_percent": 2.5,
-    "sender_tcp_congestion": "cubic"
-  }
-}
-```
-
-**UDP Mode:**
-
-```bash
-rperf3 client 127.0.0.1 -t 10 --udp --json
-```
-
-Sample UDP output:
-
-```json
-{
-  "start": {
-    "test_start": {
-      "protocol": "UDP",
-      "num_streams": 1,
-      "blksize": 1448,
-      "duration": 10
-    }
-  },
-  "intervals": [
-    {
-      "streams": [
-        {
-          "socket": 5,
-          "start": 0.0,
-          "end": 1.0,
-          "seconds": 1.0,
-          "bytes": 131768,
-          "bits_per_second": 1054144.0,
-          "packets": 91,
-          "omitted": false,
-          "sender": true
-        }
-      ],
-      "sum": {
-        /* aggregate with packets */
-      }
-    }
-  ],
-  "end": {
-    "streams": [
-      {
-        "udp": {
-          "bytes": 1311888,
-          "bits_per_second": 1049500.0,
-          "jitter_ms": 1.54,
-          "lost_packets": 0,
-          "packets": 906,
-          "lost_percent": 0.0,
-          "sender": true
-        }
-      }
-    ],
-    "sum": {
-      "jitter_ms": 1.54,
-      "lost_packets": 0,
-      "packets": 906,
-      "lost_percent": 0.0
-    }
-  }
-}
-```
-
-### Platform-Specific Features
-
-**Linux**: Full TCP statistics including retransmits, RTT, congestion window, and PMTU via `TCP_INFO` socket option.
-
-**Other Platforms**: Basic statistics without TCP-specific metrics.
-
-## Command-Line Reference
-
-### Server Options
-
-| Option                 | Description              | Default        |
-| ---------------------- | ------------------------ | -------------- |
-| `-p, --port <PORT>`    | Port to listen on        | 5201           |
-| `-b, --bind <ADDRESS>` | Bind to specific address | All interfaces |
-| `-u, --udp`            | Use UDP instead of TCP   | TCP            |
-
-### Client Options
-
-| Option                     | Description                  | Default        |
-| -------------------------- | ---------------------------- | -------------- |
-| `<SERVER>`                 | Server address to connect to | Required       |
-| `-p, --port <PORT>`        | Port to connect to           | 5201           |
-| `-u, --udp`                | Use UDP instead of TCP       | TCP            |
-| `-t, --time <SECONDS>`     | Test duration                | 10             |
-| `-b, --bandwidth <MBPS>`   | Target bandwidth (UDP only)  | Unlimited      |
-| `-l, --length <BYTES>`     | Buffer size                  | 131072         |
-| `-P, --parallel <NUM>`     | Number of parallel streams   | 1              |
-| `-R, --reverse`            | Reverse mode (server sends)  | Normal mode    |
-| `-J, --json`               | JSON output format           | Human-readable |
-| `-i, --interval <SECONDS>` | Report interval              | 1              |
-
-## Architecture
-
-The project uses a modular design with clear separation of concerns:
-
-```
-┌─────────────────────────────────────────┐
-│           rperf3-rs                     │
-├─────────────────────────────────────────┤
-│  CLI Binary        │  Library API       │
-│  (clap + main)     │  (public modules)  │
-├─────────────────────────────────────────┤
-│  Client   │  Server   │  Protocol       │
-│  Module   │  Module   │  Module         │
-├─────────────────────────────────────────┤
-│  Config   │  Measurements │  Error      │
-│  Module   │  Module       │  Module     │
-├─────────────────────────────────────────┤
-│         Tokio Runtime (Async I/O)       │
-└─────────────────────────────────────────┘
-```
-
-### Module Responsibilities
-
-- **protocol**: Message format and serialization for client-server communication
-- **client**: Client implementation for initiating tests and collecting results
-- **server**: Server implementation for handling connections and running tests
-- **config**: Configuration structures with builder pattern
-- **measurements**: Thread-safe statistics collection and calculation
-- **error**: Custom error types and conversions
+- `100K` = 100,000 bits/second
+- `100M` = 100,000,000 bits/second  
+- `1G` = 1,000,000,000 bits/second
 
 ## Performance
 
-Built with performance in mind:
+Typical performance on modern hardware:
 
-- **Async I/O**: Non-blocking operations using Tokio
-- **Zero-copy**: Efficient buffer management
-- **Thread-safe**: Lock-free where possible, using Arc/Mutex when needed
-- **Optimized builds**: Release builds with full optimizations
+- **TCP localhost**: 25-30 Gbps
+- **UDP with limiting**: Accurate rate control within 2-3% of target
+- **Packet loss detection**: Sub-millisecond precision
+- **Jitter measurement**: RFC 3550 compliant algorithm
 
-Typical throughput on localhost: **25-30 Gbps** for TCP tests.
+Built on Tokio's async runtime with optimized buffer management for maximum throughput.
 
-## Contributing
+## JSON Output Format
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development
+Use `--json` flag for machine-readable output compatible with automation:
 
 ```bash
-# Clone and build
-git clone https://github.com/arunkumar-mourougappane/rperf3-rs.git
-cd rperf3-rs
-cargo build
-
-# Run tests
-cargo test
-
-# Format code
-cargo fmt
-
-# Lint
-cargo clippy
-
-# Run examples
-cargo run --example server
-cargo run --example client
+rperf3 client 192.168.1.100 -u -b 100M --json
 ```
 
-## Comparison with iperf3
+Output includes:
 
-| Feature          | iperf3  | rperf3-rs     |
-| ---------------- | ------- | ------------- |
-| TCP Testing      | ✅      | ✅            |
-| UDP Testing      | ✅      | ✅            |
-| Reverse Mode     | ✅      | ✅            |
-| JSON Output      | ✅      | ✅            |
-| Parallel Streams | ✅      | ✅            |
-| Library API      | Limited | Full-featured |
-| Language         | C       | Rust          |
-| Memory Safety    | Manual  | Guaranteed    |
-| Async I/O        | No      | Yes (Tokio)   |
+- **Start**: Connection info, system info, test configuration
+- **Intervals**: Per-second measurements with bytes, throughput, packets
+- **End**: Summary statistics with jitter, packet loss, retransmits (TCP)
+
+## Architecture
+
+```text
+┌─────────────────────────────────────┐
+│        rperf3-rs Application        │
+├─────────────────────────────────────┤
+│  CLI (main.rs)  │  Library API      │
+├─────────────────────────────────────┤
+│  Client Module  │  Server Module    │
+│  - TCP/UDP Send │  - TCP/UDP Recv   │
+│  - Statistics   │  - Statistics     │
+├─────────────────────────────────────┤
+│  Measurements   │  Protocol         │
+│  - Metrics      │  - Messages       │
+│  - Calculations │  - Serialization  │
+├─────────────────────────────────────┤
+│        Tokio Async Runtime          │
+└─────────────────────────────────────┘
+```
+
+## Recent Updates
+
+### v0.4.0 (Current)
+
+- ✅ UDP reverse mode implementation
+- ✅ Bandwidth limiting for TCP and UDP
+- ✅ Bidirectional bandwidth calculations
+- ✅ UDP packet loss and jitter measurement (RFC 3550)
+- ✅ Out-of-order packet detection
+- ✅ Comprehensive documentation updates
+- ✅ All clippy warnings resolved
 
 ## Roadmap
 
-### Completed Features
-
-- [x] UDP packet loss and jitter measurement (v0.4.0)
-- [x] Sequence-based packet tracking
-- [x] RFC 3550 jitter calculation
-- [x] Out-of-order packet detection
-
 ### Planned Features
 
-- [ ] Enhanced parallel stream support
-- [ ] IPv6 improvements
-- [ ] SCTP protocol support
-- [ ] TCP retransmission statistics
+- [ ] Enhanced parallel stream support with aggregation
+- [ ] IPv6 testing and dual-stack support
 - [ ] CPU utilization monitoring
-- [ ] Additional output formats (CSV, XML)
+- [ ] Additional output formats (CSV)
+- [ ] Configurable congestion control algorithms
+- [ ] SCTP protocol support
+
+## Comparison with iperf3
+
+| Feature              | iperf3  | rperf3-rs |
+|----------------------|---------|-----------|
+| TCP Testing          | ✅      | ✅        |
+| UDP Testing          | ✅      | ✅        |
+| Bandwidth Limiting   | ✅      | ✅        |
+| Reverse Mode         | ✅      | ✅        |
+| JSON Output          | ✅      | ✅        |
+| Parallel Streams     | ✅      | ✅        |
+| UDP Loss/Jitter      | ✅      | ✅        |
+| Library API          | Limited | Full      |
+| Language             | C       | Rust      |
+| Memory Safety        | Manual  | Guaranteed|
+| Async I/O            | No      | Yes       |
+| Progress Callbacks   | No      | Yes       |
+
+## Contributing
+
+Contributions welcome! Please ensure:
+
+1. Code passes `cargo fmt` and `cargo clippy`
+2. All tests pass: `cargo test`
+3. Add tests for new features
+4. Update documentation
+
+```bash
+# Development workflow
+git clone https://github.com/arunkumar-mourougappane/rperf3-rs.git
+cd rperf3-rs
+cargo build
+cargo test
+cargo clippy
+cargo fmt
+```
 
 ## License
 
 Licensed under either of:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
 
 ## Acknowledgments
 
-Inspired by [iperf3](https://github.com/esnet/iperf) - the industry-standard network performance testing tool.
+Inspired by [iperf3](https://github.com/esnet/iperf) - the industry-standard network testing tool.
 
 ---
 
 **Author**: Arunkumar Mourougappane  
-**Repository**: https://github.com/arunkumar-mourougappane/rperf3-rs
+**Repository**: <https://github.com/arunkumar-mourougappane/rperf3-rs>
