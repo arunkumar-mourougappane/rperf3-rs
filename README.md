@@ -17,7 +17,7 @@ Built from the ground up in Rust, rperf3-rs leverages modern async I/O (via Toki
 - **Accurate Bandwidth Measurement**: Measure TCP and UDP throughput with sub-second interval reporting
 - **Bidirectional Testing**: Test both normal mode (client → server) and reverse mode (server → client)
 - **Detailed TCP Statistics**: On Linux, get comprehensive TCP metrics including retransmits, RTT, congestion window, and PMTU
-- **UDP Metrics**: Track packet loss, jitter, and out-of-order packets for UDP flows
+- **UDP Packet Loss & Jitter**: Measure packet loss percentage, jitter, and detect out-of-order packets for UDP flows
 - **Dual Interface**: Use as a standalone CLI tool or integrate as a Rust library with full async support
 - **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
 - **JSON Output**: Machine-readable output compatible with automation and monitoring systems
@@ -503,9 +503,15 @@ cargo run --example client
 
 ## Roadmap
 
+### Completed Features
+
+- [x] UDP packet loss and jitter measurement (v0.4.0)
+- [x] Sequence-based packet tracking
+- [x] RFC 3550 jitter calculation
+- [x] Out-of-order packet detection
+
 ### Planned Features
 
-- [ ] UDP packet loss and jitter measurement
 - [ ] Enhanced parallel stream support
 - [ ] IPv6 improvements
 - [ ] SCTP protocol support

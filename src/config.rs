@@ -300,8 +300,9 @@ impl Config {
 
     /// Sets the number of parallel streams.
     ///
-    /// Multiple parallel streams can be used to maximize throughput on
-    /// high-bandwidth networks.
+    /// Multiple parallel streams can improve throughput by utilizing multiple
+    /// connections simultaneously. This is particularly useful for high-bandwidth
+    /// networks where a single stream might not saturate the link.
     ///
     /// # Arguments
     ///
@@ -313,7 +314,7 @@ impl Config {
     /// use rperf3::Config;
     ///
     /// let config = Config::client("127.0.0.1".to_string(), 5201)
-    ///     .with_parallel(4);
+    ///     .with_parallel(4); // Use 4 parallel streams
     /// ```
     pub fn with_parallel(mut self, parallel: usize) -> Self {
         self.parallel = parallel;

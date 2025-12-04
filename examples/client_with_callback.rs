@@ -15,6 +15,7 @@ impl ProgressCallback for MyProgressCallback {
                 interval_end,
                 bytes,
                 bits_per_second,
+                ..
             } => {
                 println!(
                     "📊 [{:.1}-{:.1}s] {} bytes transferred @ {:.2} Mbps",
@@ -28,6 +29,7 @@ impl ProgressCallback for MyProgressCallback {
                 total_bytes,
                 duration,
                 bits_per_second,
+                ..
             } => {
                 println!(
                     "✅ Test completed! {} bytes in {:.2}s @ {:.2} Mbps",

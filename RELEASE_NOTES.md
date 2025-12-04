@@ -13,6 +13,7 @@ Version 0.3.9 is a major documentation release that adds comprehensive Rust API 
 Added extensive Rust documentation covering every public API in the library:
 
 #### Module-Level Documentation (lib.rs)
+
 - Enhanced crate-level documentation with detailed overview
 - Added architecture diagram showing module organization
 - Included multiple usage examples:
@@ -25,14 +26,15 @@ Added extensive Rust documentation covering every public API in the library:
 #### Configuration API (config.rs)
 
 **Protocol enum:**
-```rust
+
+````rust
 /// Transport protocol type for network testing.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use rperf3::{Config, Protocol};
-/// 
+///
 /// let tcp_config = Config::client("127.0.0.1".to_string(), 5201)
 ///     .with_protocol(Protocol::Tcp);
 /// ```
@@ -40,9 +42,10 @@ pub enum Protocol {
     Tcp,  // Reliable, ordered delivery
     Udp,  // Best-effort, lower overhead
 }
-```
+````
 
 **Config struct:** 11 builder methods documented:
+
 - `new()` - Default configuration
 - `server(port)` - Server mode setup
 - `client(addr, port)` - Client mode setup
@@ -56,6 +59,7 @@ pub enum Protocol {
 - `with_interval()` - Reporting interval
 
 Each method includes:
+
 - Purpose and behavior description
 - Parameter documentation
 - Usage examples
@@ -64,28 +68,31 @@ Each method includes:
 #### Client API (client.rs)
 
 **ProgressEvent enum:**
+
 - `TestStarted` - Test beginning notification
 - `IntervalUpdate` - Periodic statistics (bytes, throughput)
 - `TestCompleted` - Final results (total bytes, duration, throughput)
 - `Error(String)` - Error notifications
 
 **ProgressCallback trait:**
-```rust
+
+````rust
 /// Callback trait for receiving progress updates.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```no_run
 /// use rperf3::{Client, Config, ProgressEvent};
-/// 
+///
 /// let client = Client::new(config)?
 ///     .with_callback(|event| {
 ///         println!("Event: {:?}", event);
 ///     });
 /// ```
-```
+````
 
 **Client struct:**
+
 - `new(config)` - Create client with configuration
 - `with_callback(callback)` - Attach progress callback
 - `run()` - Execute network test
@@ -94,19 +101,20 @@ Each method includes:
 #### Server API (server.rs)
 
 **Server struct:**
-```rust
+
+````rust
 /// Network performance test server.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```no_run
 /// use rperf3::{Server, Config};
-/// 
+///
 /// let config = Config::server(5201);
 /// let server = Server::new(config);
 /// server.run().await?;
 /// ```
-```
+````
 
 - `new(config)` - Create server instance
 - `run()` - Start listening for connections
@@ -115,6 +123,7 @@ Each method includes:
 #### Error Handling (error.rs)
 
 **Error enum:** 6 variants documented:
+
 - `Io(std::io::Error)` - Network I/O errors
 - `Json(serde_json::Error)` - Serialization errors
 - `Connection(String)` - Connection failures
@@ -123,14 +132,15 @@ Each method includes:
 - `Test(String)` - Test execution errors
 
 **Result type alias:**
-```rust
+
+````rust
 /// Convenience type alias using Error as error type.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use rperf3::{Result, Error};
-/// 
+///
 /// fn validate_port(port: u16) -> Result<()> {
 ///     if port < 1024 {
 ///         Err(Error::Config("Port must be >= 1024".to_string()))
@@ -139,24 +149,26 @@ Each method includes:
 ///     }
 /// }
 /// ```
-```
+````
 
 #### Measurements API (measurements.rs)
 
 **Measurements struct:**
-```rust
+
+````rust
 /// Performance test measurements and statistics.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// let measurements = client.get_measurements();
 /// let throughput_mbps = measurements.total_bits_per_second() / 1_000_000.0;
 /// println!("Throughput: {:.2} Mbps", throughput_mbps);
 /// ```
-```
+````
 
 **Helper functions:**
+
 - `get_system_info()` - Collect OS, arch, hostname, timestamp
 - `get_connection_info()` - Extract TCP connection details (with platform variants)
 - `get_tcp_stats()` - Retrieve TCP statistics (Linux-specific)
@@ -166,7 +178,7 @@ Each method includes:
 ```rust
 #[cfg(target_os = "linux")]
 /// Retrieves TCP statistics from a socket (Linux only).
-/// 
+///
 /// Uses the Linux TCP_INFO socket option to extract:
 /// - Retransmits count
 /// - Congestion window size
@@ -177,7 +189,7 @@ pub fn get_tcp_stats(stream: &TcpStream) -> io::Result<TcpStats>
 
 #[cfg(not(target_os = "linux"))]
 /// Retrieves TCP statistics (non-Linux platforms).
-/// 
+///
 /// Returns default values as detailed TCP stats are not available.
 pub fn get_tcp_stats(_stream: &TcpStream) -> io::Result<TcpStats>
 ```
@@ -193,7 +205,7 @@ doctest:
   steps:
     - name: Run doc tests
       run: cargo test --doc --verbose
-    
+
     - name: Check documentation
       run: cargo doc --no-deps --all-features
       env:
@@ -201,6 +213,7 @@ doctest:
 ```
 
 **Benefits:**
+
 - Validates all documentation examples compile correctly
 - Ensures examples stay synchronized with code changes
 - Catches documentation warnings early
@@ -210,6 +223,7 @@ doctest:
 ## Documentation Statistics
 
 ### Lines Added by File
+
 - `lib.rs`: 133 lines (enhanced module docs with examples)
 - `config.rs`: 255 lines (Protocol, Mode, Config + 11 builders)
 - `client.rs`: 270 lines (ProgressEvent, ProgressCallback, Client)
@@ -220,12 +234,14 @@ doctest:
 **Total: 967 lines of documentation**
 
 ### Example Coverage
+
 - 30+ code examples across all modules
 - Every public method has at least one example
 - Complex features (callbacks, builders) have multiple examples
 - Platform-specific features clearly documented
 
 ### Documentation Quality
+
 - ✅ All examples compile without errors
 - ✅ No rustdoc warnings
 - ✅ Proper intra-doc links (`[`Type`]`, `enum@Error`)
@@ -239,6 +255,7 @@ doctest:
 ### For Library Users
 
 **Before v0.3.9:**
+
 ```rust
 // Limited documentation, had to read source code
 let client = Client::new(config)?;
@@ -246,36 +263,39 @@ client.run().await?;
 ```
 
 **After v0.3.9:**
-```rust
+
+````rust
 /// Creates a new client with the given configuration.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `config` - The test configuration. Must have a server address set.
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if the configuration doesn't have a server address set.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use rperf3::{Client, Config};
-/// 
+///
 /// let config = Config::client("127.0.0.1".to_string(), 5201);
 /// let client = Client::new(config).expect("Failed to create client");
 /// ```
 pub fn new(config: Config) -> Result<Self>
-```
+````
 
 ### Viewing Documentation
 
 **Generate and open locally:**
+
 ```bash
 cargo doc --open
 ```
 
 **Online (after publish):**
+
 - Documentation will be available at docs.rs/rperf3-rs
 - Searchable by type, method, and function
 - Includes source code links
@@ -283,6 +303,7 @@ cargo doc --open
 ### IDE Integration
 
 All major Rust IDEs (VS Code with rust-analyzer, IntelliJ IDEA, etc.) will now show:
+
 - Inline documentation on hover
 - Parameter hints with descriptions
 - Example code snippets
@@ -293,6 +314,7 @@ All major Rust IDEs (VS Code with rust-analyzer, IntelliJ IDEA, etc.) will now s
 ### Documentation Standards
 
 **Applied best practices:**
+
 1. **Triple-slash comments** (`///`) for public items
 2. **Markdown formatting** for structure
 3. **Code blocks** with language tags (`rust`, `toml`, `bash`)
@@ -302,42 +324,43 @@ All major Rust IDEs (VS Code with rust-analyzer, IntelliJ IDEA, etc.) will now s
 
 ### Example Structure
 
-```rust
+````rust
 /// Brief one-line description.
-/// 
+///
 /// Longer description with more details about behavior,
 /// use cases, and important considerations.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `param1` - Description of first parameter
 /// * `param2` - Description of second parameter
-/// 
+///
 /// # Returns
-/// 
+///
 /// Description of return value and its meaning.
-/// 
+///
 /// # Errors
-/// 
+///
 /// Conditions that cause errors:
 /// - Error case 1
 /// - Error case 2
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// // Example code here
 /// ```
-/// 
+///
 /// # Platform Support
-/// 
+///
 /// Platform-specific notes if applicable.
 pub fn documented_function(param1: Type1, param2: Type2) -> Result<ReturnType>
-```
+````
 
 ### CI/CD Integration
 
 **Documentation workflow:**
+
 1. Developer modifies code or docs
 2. Commits and pushes to GitHub
 3. CI runs `doctest` job
@@ -347,6 +370,7 @@ pub fn documented_function(param1: Type1, param2: Type2) -> Result<ReturnType>
 7. Passes only if docs are perfect
 
 **Benefits:**
+
 - Maintains documentation quality
 - Prevents regression
 - Ensures examples stay current
@@ -364,6 +388,7 @@ rperf3-rs = "0.3.9"  # was "0.3.8"
 ```
 
 **Or install CLI:**
+
 ```bash
 cargo install rperf3-rs
 ```
@@ -371,12 +396,14 @@ cargo install rperf3-rs
 ## What's Next
 
 ### Upcoming Features (v0.4.0)
+
 - Enhanced parallel stream support
 - IPv6 improvements
 - UDP packet loss and jitter measurement enhancements
 - CPU utilization monitoring
 
 ### Documentation Roadmap
+
 - Add more complex examples (custom callbacks, error handling)
 - Create tutorial documentation
 - Add architecture guide
@@ -387,6 +414,7 @@ cargo install rperf3-rs
 All 11 platform variants continue to be supported:
 
 **Linux (6 variants):**
+
 - x86_64-unknown-linux-gnu ✅
 - x86_64-unknown-linux-musl ✅
 - aarch64-unknown-linux-gnu ✅ (with TCP stats)
@@ -395,17 +423,20 @@ All 11 platform variants continue to be supported:
 - i686-unknown-linux-gnu ✅
 
 **Windows (3 variants):**
+
 - x86_64-pc-windows-msvc ✅
 - i686-pc-windows-msvc ✅
 - aarch64-pc-windows-msvc ✅
 
 **macOS (2 variants):**
+
 - x86_64-apple-darwin ✅
 - aarch64-apple-darwin ✅
 
 ## Acknowledgments
 
 Thanks to the Rust community for:
+
 - rustdoc tool and ecosystem
 - cargo-doc for documentation generation
 - docs.rs for hosting documentation
@@ -428,6 +459,7 @@ Version 0.3.8 adds the necessary metadata for publishing rperf3-rs to crates.io 
 rperf3-rs can now be published to crates.io with all required metadata:
 
 **Added Package Metadata:**
+
 - **description**: "A network throughput measurement tool written in Rust, inspired by iperf3"
 - **license**: "MIT OR Apache-2.0" (dual licensing)
 - **repository**: GitHub repository URL for source code access
@@ -440,11 +472,13 @@ rperf3-rs can now be published to crates.io with all required metadata:
 README.md has been significantly improved:
 
 **What is rperf3-rs? Section:**
+
 - Comprehensive explanation of the tool's purpose
 - Clear use cases: diagnosing network issues, validating infrastructure, benchmarking equipment
 - Technical foundation: Rust, Tokio async runtime, memory safety guarantees
 
 **Key Capabilities:**
+
 - Accurate bandwidth measurement with sub-second intervals
 - Bidirectional testing (normal and reverse modes)
 - Detailed TCP statistics (Linux: retransmits, RTT, congestion window, PMTU)
@@ -455,6 +489,7 @@ README.md has been significantly improved:
 - Cross-platform support (Linux, macOS, Windows)
 
 **Why rperf3-rs?:**
+
 - **Performance**: 25-30 Gbps throughput on localhost tests
 - **Safety**: Rust's compile-time memory safety guarantees
 - **Developer-Friendly**: Clean API design with builder patterns
@@ -482,17 +517,19 @@ tokio = { version = "1", features = ["full"] }
 ### Previous Publishing Error
 
 Attempting to publish v0.3.7 failed with:
+
 ```
 error: failed to publish rperf3-rs v0.3.7 to registry at https://crates.io
 
 Caused by:
-  the remote server responded with an error (status 400 Bad Request): 
+  the remote server responded with an error (status 400 Bad Request):
   missing or empty metadata fields: description, license.
 ```
 
 ### Required Metadata Fields
 
 According to crates.io requirements, packages must include:
+
 1. **description** (required): Brief summary of the package
 2. **license** (required): SPDX license identifier
 3. **repository** (recommended): Source code location
@@ -503,6 +540,7 @@ According to crates.io requirements, packages must include:
 ### Cargo.toml Before and After
 
 **Before (v0.3.7):**
+
 ```toml
 [package]
 name = "rperf3-rs"
@@ -513,6 +551,7 @@ authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
 ```
 
 **After (v0.3.8):**
+
 ```toml
 [package]
 name = "rperf3-rs"
@@ -546,6 +585,7 @@ cargo build --release
 ### Pre-built Binaries
 
 Download platform-specific binaries from GitHub Releases:
+
 - Linux: x86_64 (GNU/musl), ARM64 (GNU/musl), ARMv7, i686
 - Windows: x86_64, i686, ARM64
 - macOS: x86_64 (Intel), ARM64 (Apple Silicon)
@@ -586,15 +626,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Changes Since v0.3.7
 
 ### Added
+
 - Required crates.io package metadata (description, license)
 - Recommended metadata (repository, readme, keywords, categories)
 - Enhanced project documentation in README.md
 
 ### Changed
+
 - Documentation tone adjusted for broader audience
 - README structure improved with clearer sections
 
 ### Fixed
+
 - Crates.io publishing error (400 Bad Request)
 - Missing metadata fields preventing publication
 
@@ -603,6 +646,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 This is a metadata-only release with no functional changes to the codebase. Users of v0.3.7 can upgrade without any code modifications.
 
 **For Library Users:**
+
 ```toml
 # Update version in Cargo.toml
 [dependencies]
@@ -610,6 +654,7 @@ rperf3-rs = "0.3.8"  # was "0.3.7"
 ```
 
 **For Binary Users:**
+
 - Download new release from GitHub, or
 - Install from crates.io: `cargo install rperf3-rs`
 
@@ -618,6 +663,7 @@ rperf3-rs = "0.3.8"  # was "0.3.7"
 All 11 platform variants continue to be built and released:
 
 **Linux (6 variants):**
+
 - x86_64-unknown-linux-gnu ✅
 - x86_64-unknown-linux-musl ✅
 - aarch64-unknown-linux-gnu ✅
@@ -626,11 +672,13 @@ All 11 platform variants continue to be built and released:
 - i686-unknown-linux-gnu ✅
 
 **Windows (3 variants):**
+
 - x86_64-pc-windows-msvc ✅
 - i686-pc-windows-msvc ✅
 - aarch64-pc-windows-msvc ✅
 
 **macOS (2 variants):**
+
 - x86_64-apple-darwin ✅
 - aarch64-apple-darwin ✅
 
@@ -663,6 +711,7 @@ Version 0.3.7 fixes Windows build failures by correcting the cross-rs usage to L
 ### What Was Broken
 
 The v0.3.6 release workflow failed for Windows i686 target:
+
 - **Job 56985371251 failed** with cross-rs error
 - Attempted to use cross-rs for `i686-pc-windows-msvc`
 - Error: "cross does not provide a Docker image for target i686-pc-windows-msvc"
@@ -671,6 +720,7 @@ The v0.3.6 release workflow failed for Windows i686 target:
 ### The Problem
 
 The workflow logic was too broad:
+
 ```yaml
 # Incorrect - applies to ALL i686 targets including Windows
 if: contains(matrix.target, 'i686')
@@ -678,6 +728,7 @@ if: contains(matrix.target, 'i686')
 ```
 
 cross-rs is a Linux-focused tool that:
+
 - Provides Docker images for Linux cross-compilation
 - Does NOT support Windows or macOS targets
 - Cannot cross-compile to Windows from any platform
@@ -685,6 +736,7 @@ cross-rs is a Linux-focused tool that:
 ### The Solution
 
 Restricted cross-rs to Linux targets only:
+
 ```yaml
 # Correct - Linux targets only
 if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
@@ -700,11 +752,13 @@ if: !(Linux complex targets)
 ### cross-rs Capabilities and Limitations
 
 **What cross-rs DOES support:**
+
 - Linux target cross-compilation (all architectures)
 - Docker-based build environments for Linux
 - Complex toolchain setups (ARMv7, musl, etc.)
 
 **What cross-rs DOES NOT support:**
+
 - Windows targets (any architecture)
 - macOS targets (any architecture)
 - Cross-compilation TO Windows or macOS
@@ -712,22 +766,24 @@ if: !(Linux complex targets)
 ### Updated Build Strategy
 
 **Linux Targets (6 variants):**
+
 - **Using cross-rs** (Docker-based):
   - `armv7-unknown-linux-gnueabihf`
   - `x86_64-unknown-linux-musl`
   - `aarch64-unknown-linux-musl`
   - `i686-unknown-linux-gnu`
-  
 - **Using cargo** (native with linker):
   - `x86_64-unknown-linux-gnu` (default)
   - `aarch64-unknown-linux-gnu` (gcc-aarch64-linux-gnu)
 
 **Windows Targets (3 variants) - ALL use native cargo:**
+
 - `x86_64-pc-windows-msvc` ✅ MSVC toolchain
 - `i686-pc-windows-msvc` ✅ MSVC toolchain (FIXED)
 - `aarch64-pc-windows-msvc` ✅ MSVC toolchain
 
 **macOS Targets (2 variants) - ALL use native cargo:**
+
 - `x86_64-apple-darwin` ✅ Apple toolchain
 - `aarch64-apple-darwin` ✅ Apple toolchain
 
@@ -736,6 +792,7 @@ if: !(Linux complex targets)
 ### Simplified Build Logic
 
 **Before (v0.3.6 - Failed):**
+
 ```yaml
 # Too broad - includes Windows
 - Install cross if: contains(target, 'i686')
@@ -744,6 +801,7 @@ if: !(Linux complex targets)
 ```
 
 **After (v0.3.7 - Fixed):**
+
 ```yaml
 # Specific to Linux only
 - Install cross if: contains(target, 'linux') && (armv7 || musl || i686)
@@ -761,6 +819,7 @@ if: !(Linux complex targets)
 ## All Platforms Building Successfully
 
 ✅ **Linux (6 variants)**:
+
 - x86_64 GNU ✅ (cargo)
 - x86_64 musl ✅ (cross-rs)
 - ARM64 GNU ✅ (cargo + linker)
@@ -769,17 +828,20 @@ if: !(Linux complex targets)
 - i686 ✅ (cross-rs)
 
 ✅ **Windows (3 variants)**:
+
 - x86_64 ✅ (cargo + MSVC)
 - i686 ✅ (cargo + MSVC) - **FIXED in v0.3.7**
 - ARM64 ✅ (cargo + MSVC)
 
 ✅ **macOS (2 variants)**:
+
 - x86_64 Intel ✅ (cargo + Apple)
 - ARM64 Apple Silicon ✅ (cargo + Apple)
 
 ## Verification
 
 All 11 platform artifacts include:
+
 - ✅ Compiled binary
 - ✅ SHA256 checksum file
 - ✅ Verified successful build in CI/CD
@@ -792,11 +854,13 @@ None. This is a CI/CD build configuration fix with no runtime changes.
 ## Upgrade Notes
 
 If you're on v0.3.6:
+
 - Windows i686 binary was missing from releases
 - **Upgrade to v0.3.7** for complete platform coverage
 - All other platforms from v0.3.6 work correctly
 
 Upgrade process:
+
 1. Download the appropriate binary for your platform
 2. Verify using the SHA256 checksum
 3. Replace your existing binary
@@ -809,6 +873,7 @@ Upgrade process:
 If you're setting up cross-compilation:
 
 **For Linux targets:**
+
 ```bash
 # cross-rs works great
 cargo install cross
@@ -817,6 +882,7 @@ cross build --target armv7-unknown-linux-gnueabihf
 ```
 
 **For Windows targets:**
+
 ```bash
 # Use native toolchain or specialized tools
 # On Windows:
@@ -830,6 +896,7 @@ cargo build --target i686-pc-windows-msvc
 ### CI/CD Best Practices
 
 When setting up multi-platform builds:
+
 1. **Know your tool capabilities**: cross-rs = Linux only
 2. **Use native toolchains when possible**: More reliable, less overhead
 3. **Be explicit in conditionals**: Avoid broad matches like `contains(target, 'i686')`
@@ -838,19 +905,23 @@ When setting up multi-platform builds:
 ## Version History Context
 
 ### v0.3.4
+
 - Added SHA256 checksums
 - ARMv7 and complex targets failed
 
 ### v0.3.5
+
 - Integrated cross-rs for complex targets
 - Fixed ARMv7, musl, i686 Linux builds
 - aarch64 GNU still failing
 
 ### v0.3.6
+
 - Fixed aarch64 GNU linker configuration
 - But cross-rs applied too broadly (included Windows)
 
 ### v0.3.7 (Current)
+
 - Fixed cross-rs scope to Linux only
 - Windows builds use native MSVC
 - **All 11 platforms building successfully**
@@ -865,6 +936,7 @@ When setting up multi-platform builds:
 ## What's Next
 
 With complete and reliable platform coverage, v0.3.8 may include:
+
 - Feature development (parallel streams, IPv6)
 - Performance optimizations
 - Additional protocols (SCTP)
@@ -890,6 +962,7 @@ See [CHANGELOG.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/mai
 ### What Was Broken
 
 The v0.3.5 release workflow failed for the `aarch64-unknown-linux-gnu` target:
+
 - **Build step failed** with linker errors
 - gcc-aarch64-linux-gnu was installed but not configured
 - cargo didn't know which linker to use for cross-compilation
@@ -898,9 +971,10 @@ The v0.3.5 release workflow failed for the `aarch64-unknown-linux-gnu` target:
 ### The Problem
 
 While the cross-compiler toolchain was installed correctly:
+
 ```yaml
-- Install gcc-aarch64-linux-gnu  # ✅ Installed
-- cargo build --target aarch64-unknown-linux-gnu  # ❌ Failed - no linker configured
+- Install gcc-aarch64-linux-gnu # ✅ Installed
+- cargo build --target aarch64-unknown-linux-gnu # ❌ Failed - no linker configured
 ```
 
 cargo needs to be explicitly told which linker to use for each cross-compilation target.
@@ -908,10 +982,11 @@ cargo needs to be explicitly told which linker to use for each cross-compilation
 ### The Solution
 
 Configured the linker via environment variable during toolchain installation:
+
 ```yaml
 - Install gcc-aarch64-linux-gnu
 - Set CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-- cargo build --target aarch64-unknown-linux-gnu  # ✅ Success
+- cargo build --target aarch64-unknown-linux-gnu # ✅ Success
 ```
 
 ## Technical Details
@@ -919,6 +994,7 @@ Configured the linker via environment variable during toolchain installation:
 ### Environment Variable Convention
 
 cargo uses a specific naming pattern for linker configuration:
+
 - Format: `CARGO_TARGET_<TRIPLE>_LINKER`
 - Triple in uppercase with hyphens replaced by underscores
 - Example: `aarch64-unknown-linux-gnu` → `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER`
@@ -932,6 +1008,7 @@ cargo uses a specific naming pattern for linker configuration:
 ### Workflow Changes
 
 **Before (v0.3.5 - Failed)**:
+
 ```yaml
 - name: Install cross-compilation tools
   run: |
@@ -940,6 +1017,7 @@ cargo uses a specific naming pattern for linker configuration:
 ```
 
 **After (v0.3.6 - Fixed)**:
+
 ```yaml
 - name: Install cross-compilation tools
   run: |
@@ -951,6 +1029,7 @@ cargo uses a specific naming pattern for linker configuration:
 ## All Platforms Now Building Successfully
 
 ✅ **Linux (6 variants)**:
+
 - x86_64 GNU ✅ (native)
 - x86_64 musl ✅ (cross-rs)
 - ARM64 GNU ✅ (native with linker config) - **FIXED in v0.3.6**
@@ -959,10 +1038,12 @@ cargo uses a specific naming pattern for linker configuration:
 - i686 ✅ (cross-rs)
 
 ✅ **macOS (2 variants)**:
+
 - x86_64 Intel ✅
 - ARM64 Apple Silicon ✅
 
 ✅ **Windows (3 variants)**:
+
 - x86_64 ✅
 - i686 ✅
 - ARM64 ✅
@@ -970,22 +1051,26 @@ cargo uses a specific naming pattern for linker configuration:
 ## Build System Summary
 
 ### Targets Using cross-rs (Docker-based)
+
 - armv7-unknown-linux-gnueabihf
 - x86_64-unknown-linux-musl
 - aarch64-unknown-linux-musl
 - i686-unknown-linux-gnu
 
 ### Targets Using Native cargo (with explicit linker)
+
 - **aarch64-unknown-linux-gnu** (linker: gcc-aarch64-linux-gnu)
 - x86_64-unknown-linux-gnu (default linker)
 
 ### Targets Using Native Toolchains
+
 - All macOS targets (Apple toolchain)
 - All Windows targets (MSVC toolchain)
 
 ## Verification
 
 All 11 platform artifacts include:
+
 - ✅ Compiled binary
 - ✅ SHA256 checksum file
 - ✅ Verified build success in CI/CD
@@ -998,11 +1083,13 @@ None. This is a CI/CD build configuration fix with no runtime changes.
 ## Upgrade Notes
 
 If you're on v0.3.5:
+
 - ARM64 GNU binary was missing from releases
 - **Upgrade to v0.3.6** for complete platform coverage
 - All other platforms from v0.3.5 work correctly
 
 Upgrade process:
+
 1. Download the appropriate binary for your platform
 2. Verify using the SHA256 checksum
 3. Replace your existing binary
@@ -1031,6 +1118,7 @@ linker = "aarch64-linux-gnu-gcc"
 ### CI/CD Integration
 
 For GitHub Actions or other CI systems:
+
 ```yaml
 - name: Setup ARM64 cross-compilation
   run: |
@@ -1045,16 +1133,19 @@ For GitHub Actions or other CI systems:
 ## Version History Context
 
 ### v0.3.4
+
 - Added SHA256 checksums for security
 - Initial multi-platform release attempt
 - ARMv7 and other complex targets failed
 
 ### v0.3.5
+
 - Integrated cross-rs for complex targets
 - Fixed ARMv7, musl, and i686 builds
 - aarch64 GNU still failing (linker not configured)
 
 ### v0.3.6 (Current)
+
 - Fixed aarch64 GNU linker configuration
 - **All 11 platforms now building successfully**
 - Complete cross-compilation infrastructure
@@ -1068,6 +1159,7 @@ For GitHub Actions or other CI systems:
 ## What's Next
 
 With complete platform coverage established, v0.3.7 may include:
+
 - Additional platform support (FreeBSD, NetBSD)
 - RISC-V architecture support
 - Enhanced parallel stream support
@@ -1094,11 +1186,13 @@ See [CHANGELOG.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/mai
 ### What Was Broken
 
 The v0.3.4 release workflow failed due to build errors on complex cross-compilation targets:
+
 - **ARMv7** (Raspberry Pi 2/3): Exit code 101 - compilation failed
 - **musl targets**: Linker configuration issues
 - **i686**: Complex toolchain setup failures
 
 Manual gcc cross-compiler setup proved insufficient for:
+
 - Complex dependency chains requiring specific linker flags
 - musl libc static linking requirements
 - 32-bit target library compatibility
@@ -1108,18 +1202,21 @@ Manual gcc cross-compiler setup proved insufficient for:
 Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provides:
 
 #### Docker-Based Build Environments
+
 - Pre-configured containers for each target platform
 - Includes all necessary compilers, linkers, and system libraries
 - Isolated environments prevent host system interference
 - Consistent builds across different CI runners
 
 #### Targets Using cross-rs (Complex Builds)
+
 - `armv7-unknown-linux-gnueabihf` - Raspberry Pi 2/3, embedded ARM devices
 - `x86_64-unknown-linux-musl` - Static x86_64 binaries for containers
 - `aarch64-unknown-linux-musl` - Static ARM64 binaries for containers
 - `i686-unknown-linux-gnu` - 32-bit x86 legacy systems
 
 #### Targets Using Native Cargo (Simple Builds)
+
 - `x86_64-unknown-linux-gnu` - Standard Linux (with simple gcc setup)
 - `aarch64-unknown-linux-gnu` - ARM64 Linux (with gcc-aarch64)
 - All macOS targets (native Apple toolchain)
@@ -1130,6 +1227,7 @@ Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provi
 ### Build Workflow Changes
 
 **Before (v0.3.4 - Failed)**:
+
 ```yaml
 # Manual toolchain setup
 - Install gcc-arm-linux-gnueabihf
@@ -1139,6 +1237,7 @@ Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provi
 ```
 
 **After (v0.3.5 - Fixed)**:
+
 ```yaml
 # Docker-based cross-compilation
 - cargo install cross
@@ -1165,6 +1264,7 @@ Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provi
 ### Now Building Successfully
 
 ✅ **Linux (6 variants)**:
+
 - x86_64 GNU ✅ (native cargo)
 - x86_64 musl ✅ (cross-rs) - **FIXED**
 - ARM64 GNU ✅ (native cargo with gcc)
@@ -1173,10 +1273,12 @@ Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provi
 - i686 ✅ (cross-rs) - **FIXED**
 
 ✅ **macOS (2 variants)**:
+
 - x86_64 Intel ✅
 - ARM64 Apple Silicon ✅
 
 ✅ **Windows (3 variants)**:
+
 - x86_64 ✅
 - i686 ✅
 - ARM64 ✅
@@ -1184,6 +1286,7 @@ Integrated **cross-rs**, a mature Docker-based cross-compilation tool that provi
 ### Verification
 
 All 11 platform artifacts now include:
+
 - Compiled binary
 - SHA256 checksum file (from v0.3.4)
 - Verified build success in CI/CD
@@ -1195,11 +1298,13 @@ None. This is a build system fix with no runtime changes.
 ## Upgrade Notes
 
 If you downloaded v0.3.4 binaries:
+
 - Only successful builds were available (x86_64, macOS, Windows)
 - ARMv7, musl, and i686 were missing
 - **Please upgrade to v0.3.5** for complete platform coverage
 
 Upgrade process:
+
 1. Download the appropriate binary for your platform
 2. Verify using the SHA256 checksum
 3. Replace your existing binary
@@ -1226,6 +1331,7 @@ cross build --release --target i686-unknown-linux-gnu
 ```
 
 Requirements:
+
 - Docker installed and running
 - Internet connection (for Docker image download on first use)
 - Same images used by CI/CD
@@ -1233,6 +1339,7 @@ Requirements:
 ### CI/CD Integration
 
 The GitHub Actions workflow now:
+
 1. Detects target complexity
 2. Installs cross-rs for complex targets
 3. Uses appropriate build tool (cross vs cargo)
@@ -1249,6 +1356,7 @@ The GitHub Actions workflow now:
 ## What's Next
 
 With reliable cross-compilation established, v0.3.6 may include:
+
 - Additional platform support (FreeBSD, NetBSD)
 - RISC-V architecture support
 - Enhanced parallel stream support
@@ -1257,6 +1365,7 @@ With reliable cross-compilation established, v0.3.6 may include:
 ## For Previous v0.3.4 Content
 
 v0.3.4 introduced SHA256 checksums (still included in v0.3.5):
+
 - 22 files per release (11 binaries + 11 checksums)
 - Cryptographic verification for all downloads
 - Enterprise compliance support
@@ -1291,7 +1400,9 @@ Every release artifact now includes an accompanying `.sha256` checksum file:
 ### Security Benefits
 
 #### Download Integrity Verification
+
 Users can now verify that downloaded binaries haven't been corrupted during transfer:
+
 ```bash
 # Linux/macOS
 shasum -a 256 -c rperf3-linux-x86_64.sha256
@@ -1303,13 +1414,16 @@ if ($hash -eq $expected.Split()[0]) { "Valid" } else { "Invalid" }
 ```
 
 #### Tamper Detection
+
 Checksums protect against:
+
 - Network transmission errors
 - Storage corruption
 - Man-in-the-middle attacks
 - Unauthorized binary modifications
 
 #### Industry Standard Practice
+
 - Follows security best practices for binary distribution
 - Common requirement for enterprise deployment
 - Essential for compliance and audit requirements
@@ -1320,6 +1434,7 @@ Checksums protect against:
 All 11 platform variants include checksums:
 
 ### Linux (6 variants with checksums)
+
 - `rperf3-linux-x86_64` + `.sha256`
 - `rperf3-linux-x86_64-musl` + `.sha256`
 - `rperf3-linux-aarch64` + `.sha256`
@@ -1328,10 +1443,12 @@ All 11 platform variants include checksums:
 - `rperf3-linux-i686` + `.sha256`
 
 ### macOS (2 variants with checksums)
+
 - `rperf3-macos-x86_64` + `.sha256`
 - `rperf3-macos-aarch64` + `.sha256`
 
 ### Windows (3 variants with checksums)
+
 - `rperf3-windows-x86_64.exe` + `.sha256`
 - `rperf3-windows-i686.exe` + `.sha256`
 - `rperf3-windows-aarch64.exe` + `.sha256`
@@ -1339,6 +1456,7 @@ All 11 platform variants include checksums:
 ## Verification Examples
 
 ### Linux/macOS Quick Verification
+
 ```bash
 # Download binary and checksum
 curl -LO https://github.com/arunkumar-mourougappane/rperf3-rs/releases/download/v0.3.4/rperf3-linux-x86_64
@@ -1350,6 +1468,7 @@ shasum -a 256 -c rperf3-linux-x86_64.sha256
 ```
 
 ### Windows Verification (CMD)
+
 ```cmd
 :: Download files first
 certutil -hashfile rperf3-windows-x86_64.exe SHA256
@@ -1358,6 +1477,7 @@ type rperf3-windows-x86_64.exe.sha256
 ```
 
 ### Windows Verification (PowerShell)
+
 ```powershell
 # Automated verification
 $binary = "rperf3-windows-x86_64.exe"
@@ -1374,6 +1494,7 @@ if ($actualHash -eq $expectedHash) {
 ```
 
 ### macOS Homebrew-style Verification
+
 ```bash
 # Single command verification
 echo "$(cat rperf3-macos-aarch64.sha256)" | shasum -a 256 -c -
@@ -1382,11 +1503,13 @@ echo "$(cat rperf3-macos-aarch64.sha256)" | shasum -a 256 -c -
 ## Use Cases
 
 ### Enterprise Deployment
+
 - Compliance requirements for software verification
 - Audit trail for binary provenance
 - Security policy enforcement
 
 ### CI/CD Pipelines
+
 ```yaml
 # GitHub Actions example
 - name: Download and verify rperf3
@@ -1398,6 +1521,7 @@ echo "$(cat rperf3-macos-aarch64.sha256)" | shasum -a 256 -c -
 ```
 
 ### Containerized Deployments
+
 ```dockerfile
 FROM alpine:latest
 WORKDIR /app
@@ -1414,6 +1538,7 @@ ENTRYPOINT ["/usr/local/bin/rperf3"]
 ```
 
 ### Air-Gapped Environments
+
 - Verify binaries before transferring to isolated networks
 - Ensure no corruption during offline transfer
 - Document integrity for security reviews
@@ -1421,6 +1546,7 @@ ENTRYPOINT ["/usr/local/bin/rperf3"]
 ## Technical Implementation
 
 ### Checksum Generation Process
+
 1. Binary compiled with release optimizations
 2. Binary stripped (Linux/macOS) to reduce size
 3. SHA256 hash computed using platform tools:
@@ -1430,12 +1556,15 @@ ENTRYPOINT ["/usr/local/bin/rperf3"]
 5. Both binary and checksum uploaded to GitHub release
 
 ### Checksum File Format
+
 Unix format (Linux/macOS):
+
 ```
 abc123def456...  rperf3-linux-x86_64
 ```
 
 Windows format:
+
 ```
 SHA256 hash of file rperf3-windows-x86_64.exe:
 abc123def456...
@@ -1453,6 +1582,7 @@ Simply download the new version and verify it using the checksum file. No config
 ## Migration from Previous Versions
 
 If you're upgrading from v0.3.3 or earlier:
+
 1. Download both the binary and `.sha256` file
 2. Verify the checksum (optional but recommended)
 3. Replace your existing binary
@@ -1473,6 +1603,7 @@ If you're upgrading from v0.3.3 or earlier:
 ## What's Next
 
 The v0.3.5 roadmap may include:
+
 - GPG signature support for even stronger verification
 - Automated verification scripts
 - Integration with package managers
