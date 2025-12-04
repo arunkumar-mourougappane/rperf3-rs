@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-12-04
+
+### Added
+- UDP reverse mode implementation with TCP control channel handshake
+- UDP normal mode server reception (server now properly receives UDP packets)
+- TCP bandwidth limiting with rate-based algorithm (checks every 1ms, sleeps if >0.1ms ahead)
+- Bidirectional bandwidth calculations (sum of sent and received bytes)
+- Bandwidth notation documentation (K/M/G suffixes: 100M = 100,000,000 bps)
+- Comprehensive README enhancements:
+  - "What is rperf3-rs?" section
+  - "Why rperf3-rs?" section
+  - crates.io installation instructions
+- Enhanced public API documentation in lib.rs with UDP examples and performance benchmarks
+
+### Fixed
+- UDP reverse mode (-R flag) now correctly implemented with bidirectional data transfer
+- UDP normal mode server bug where server was sleeping instead of receiving packets
+- Packet counting bug - corrected parameter order in `record_udp_packet_received()` to (sequence, send_timestamp_us, recv_timestamp_us)
+- Bandwidth calculations now account for both sent AND received bytes for accurate bidirectional measurements
+- All clippy warnings resolved:
+  - Used `abs_diff()` for unsigned integer differences
+  - Reduced function parameters by extracting from config
+  - Changed assertions from `len() > 0` to `!is_empty()`
+
+### Changed
+- `handle_udp_test()` reduced from 8 to 4 parameters (extracted duration, bandwidth, buffer_size, reverse from config)
+- UDP reverse mode architecture: TCP control channel (port 5201) + UDP data channel
+- Initialization packet uses sequence u64::MAX to discover client UDP port
+- `bits_per_second()` and `total_bits_per_second()` now use (bytes_sent + bytes_received) * 8 / duration
+- Transit time calculation uses `abs_diff()` instead of subtraction
+
 ### Planned
 
 - Enhanced parallel stream support
