@@ -12,8 +12,16 @@ use tokio::time;
 /// Network performance test server.
 ///
 /// The `Server` listens for incoming client connections and handles performance
-/// test requests. It supports both TCP and UDP protocols and can handle multiple
-/// concurrent clients.
+/// test requests. It supports both TCP and UDP protocols, reverse mode testing,
+/// bandwidth limiting, and can handle multiple concurrent clients.
+///
+/// # Features
+///
+/// - **TCP and UDP**: Handle both reliable (TCP) and unreliable (UDP) protocol tests
+/// - **Reverse Mode**: Send data to client for reverse throughput testing
+/// - **Bandwidth Limiting**: Control send rate in reverse mode tests
+/// - **UDP Metrics**: Track packet loss, jitter, and out-of-order delivery
+/// - **Concurrent Clients**: Handle multiple simultaneous test connections
 ///
 /// # Examples
 ///
@@ -33,15 +41,16 @@ use tokio::time;
 /// # }
 /// ```
 ///
-/// ## UDP Server on Custom Port
+/// ## UDP Server with Reverse Mode
 ///
 /// ```no_run
 /// use rperf3::{Server, Config, Protocol};
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let config = Config::server(8080)
-///     .with_protocol(Protocol::Udp);
+/// let config = Config::server(5201)
+///     .with_protocol(Protocol::Udp)
+///     .with_reverse(true); // Server will send UDP data
 ///
 /// let server = Server::new(config);
 /// server.run().await?;
@@ -239,11 +248,13 @@ impl Server {
 
     /// Retrieves the current measurements collected by the server.
     ///
-    /// Returns a snapshot of the statistics collected from client tests.
+    /// Returns a snapshot of the statistics collected from client tests. This
+    /// includes total bytes transferred, bandwidth measurements, and UDP-specific
+    /// metrics like packet loss and jitter.
     ///
     /// # Returns
     ///
-    /// A `Measurements` struct containing test statistics.
+    /// A `Measurements` struct containing comprehensive test statistics.
     ///
     /// # Examples
     ///
@@ -255,7 +266,9 @@ impl Server {
     ///
     /// // After tests have run
     /// let measurements = server.get_measurements();
-    /// println!("Total bytes: {}", measurements.total_bytes_sent);
+    /// println!("Total bytes: {}", measurements.total_bytes_received);
+    /// println!("Throughput: {:.2} Mbps",
+    ///          measurements.total_bits_per_second() / 1_000_000.0);
     /// ```
     pub fn get_measurements(&self) -> crate::Measurements {
         self.measurements.get()
@@ -271,27 +284,44 @@ async fn handle_tcp_client(
     // Read setup message
     let setup_msg = deserialize_message(&mut stream).await?;
 
-    let (duration, reverse, _parallel) = match setup_msg {
+    let (protocol, duration, reverse, _parallel, bandwidth, buffer_size) = match setup_msg {
         Message::Setup {
             version: _,
             protocol,
             duration,
             reverse,
             parallel,
+            bandwidth,
+            buffer_size,
             ..
         } => {
             info!(
                 "Client {} setup: protocol={}, duration={}s, reverse={}, parallel={}",
                 addr, protocol, duration, reverse, parallel
             );
-            (Duration::from_secs(duration), reverse, parallel)
+            (protocol, Duration::from_secs(duration), reverse, parallel, bandwidth, buffer_size)
         }
         _ => {
             return Err(Error::Protocol("Expected Setup message".to_string()));
         }
     };
 
-    // Send setup acknowledgment
+    // Check if this is UDP mode
+    if protocol == "Udp" {
+        // Handle UDP test via control channel
+        return handle_udp_test(
+            stream,
+            addr,
+            duration,
+            reverse,
+            bandwidth,
+            buffer_size,
+            config,
+            measurements,
+        ).await;
+    }
+
+    // Send setup acknowledgment for TCP
     let ack = Message::setup_ack(config.port, format!("{}", addr));
     let ack_bytes = serialize_message(&ack)?;
     stream.write_all(&ack_bytes).await?;
@@ -312,7 +342,7 @@ async fn handle_tcp_client(
 
     if reverse {
         // Server sends data to client
-        send_data(&mut stream, 0, duration, &measurements, &config).await?;
+        send_data(&mut stream, 0, duration, bandwidth, &measurements, &config).await?;
     } else {
         // Server receives data from client
         receive_data(&mut stream, 0, duration, &measurements, &config).await?;
@@ -349,10 +379,229 @@ async fn handle_tcp_client(
     Ok(())
 }
 
+async fn handle_udp_test(
+    mut control_stream: TcpStream,
+    client_addr: SocketAddr,
+    duration: Duration,
+    reverse: bool,
+    bandwidth: Option<u64>,
+    buffer_size: usize,
+    config: Config,
+    measurements: MeasurementsCollector,
+) -> Result<()> {
+    // Send setup acknowledgment
+    let ack = Message::setup_ack(config.port, format!("{}", client_addr));
+    let ack_bytes = serialize_message(&ack)?;
+    control_stream.write_all(&ack_bytes).await?;
+    control_stream.flush().await?;
+
+    // Send start signal
+    let start_msg = Message::start(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    );
+    let start_bytes = serialize_message(&start_msg)?;
+    control_stream.write_all(&start_bytes).await?;
+    control_stream.flush().await?;
+
+    measurements.set_start_time(Instant::now());
+
+    if reverse {
+        // Server sends UDP data to client
+        send_udp_data(client_addr, duration, bandwidth, buffer_size, &measurements, &config).await?;
+    } else {
+        // Server receives UDP data from client
+        receive_udp_data(duration, &measurements, &config).await?;
+    }
+
+    info!(
+        "UDP test completed for {}: {:.2} Mbps",
+        client_addr,
+        measurements.get().total_bits_per_second() / 1_000_000.0
+    );
+
+    Ok(())
+}
+
+async fn send_udp_data(
+    _client_tcp_addr: SocketAddr,
+    duration: Duration,
+    bandwidth: Option<u64>,
+    buffer_size: usize,
+    measurements: &MeasurementsCollector,
+    config: &Config,
+) -> Result<()> {
+    // Bind to the server's configured port for UDP
+    let bind_addr = format!("0.0.0.0:{}", config.port);
+    let socket = UdpSocket::bind(&bind_addr).await?;
+    
+    info!("UDP server waiting for client on port {}", config.port);
+    
+    // Wait for first packet from client to discover their UDP port
+    let mut buf = vec![0u8; 65536];
+    let (_, client_udp_addr) = socket.recv_from(&mut buf).await?;
+    
+    info!("UDP client address discovered: {}", client_udp_addr);
+    
+    // Now connect to client's UDP address
+    socket.connect(client_udp_addr).await?;
+
+    let start = Instant::now();
+    let mut last_interval = start;
+    let mut interval_bytes = 0u64;
+    let mut interval_packets = 0u64;
+    let mut sequence = 0u64;
+
+    // Calculate payload size accounting for UDP packet header
+    let payload_size = if buffer_size > crate::udp_packet::UdpPacketHeader::SIZE {
+        buffer_size - crate::udp_packet::UdpPacketHeader::SIZE
+    } else {
+        1024
+    };
+
+    // Bandwidth limiting
+    let target_bytes_per_sec = bandwidth.map(|bw| bw / 8);
+    let mut total_bytes_sent = 0u64;
+    let mut last_bandwidth_check = start;
+
+    while start.elapsed() < duration {
+        let packet = crate::udp_packet::create_packet(sequence, payload_size);
+        
+        match socket.send(&packet).await {
+            Ok(n) => {
+                measurements.record_bytes_sent(0, n as u64);
+                measurements.record_udp_packet(0);
+                interval_bytes += n as u64;
+                interval_packets += 1;
+                sequence += 1;
+                total_bytes_sent += n as u64;
+
+                // Bandwidth limiting
+                if let Some(target_bps) = target_bytes_per_sec {
+                    let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
+                    
+                    if elapsed >= 0.001 {
+                        let expected_bytes = (target_bps as f64 * elapsed) as u64;
+                        let bytes_sent_in_period = total_bytes_sent;
+                        
+                        if bytes_sent_in_period > expected_bytes {
+                            let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
+                            let sleep_time = bytes_ahead / target_bps as f64;
+                            if sleep_time > 0.0001 {
+                                time::sleep(Duration::from_secs_f64(sleep_time)).await;
+                            }
+                        }
+                        
+                        last_bandwidth_check = Instant::now();
+                        total_bytes_sent = 0;
+                    }
+                }
+
+                // Report interval
+                if last_interval.elapsed() >= config.interval {
+                    let elapsed = start.elapsed();
+                    let interval_duration = last_interval.elapsed();
+                    let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+
+                    let interval_start = if elapsed > interval_duration {
+                        elapsed - interval_duration
+                    } else {
+                        Duration::ZERO
+                    };
+
+                    measurements.add_interval(IntervalStats {
+                        start: interval_start,
+                        end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: Some(interval_packets),
+                    });
+
+                    if !config.json {
+                        println!(
+                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
+                            interval_start.as_secs_f64(),
+                            elapsed.as_secs_f64(),
+                            interval_bytes,
+                            bps / 1_000_000.0,
+                            interval_packets
+                        );
+                    }
+                    interval_bytes = 0;
+                    interval_packets = 0;
+                    last_interval = Instant::now();
+                }
+            }
+            Err(e) => {
+                error!("Error sending UDP packet: {}", e);
+                break;
+            }
+        }
+    }
+
+    measurements.set_duration(start.elapsed());
+    Ok(())
+}
+
+async fn receive_udp_data(
+    duration: Duration,
+    measurements: &MeasurementsCollector,
+    config: &Config,
+) -> Result<()> {
+    // Bind UDP socket on the server port
+    let bind_addr = format!("0.0.0.0:{}", config.port);
+    let socket = UdpSocket::bind(&bind_addr).await?;
+    
+    info!("UDP server listening for packets on port {}", config.port);
+    
+    let start = Instant::now();
+    let mut buf = vec![0u8; 65536];
+    
+    // Receive packets until duration expires or timeout
+    while start.elapsed() < duration {
+        // Set a timeout so we can check elapsed time
+        let remaining = duration.saturating_sub(start.elapsed());
+        let timeout = remaining.min(Duration::from_millis(100));
+        
+        match tokio::time::timeout(timeout, socket.recv_from(&mut buf)).await {
+            Ok(Ok((n, _addr))) => {
+                // Parse UDP packet
+                if let Some((header, _payload)) = crate::udp_packet::parse_packet(&buf[..n]) {
+                    let recv_timestamp_us = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_micros() as u64;
+                    
+                    measurements.record_bytes_received(0, n as u64);
+                    measurements.record_udp_packet_received(
+                        header.sequence,
+                        header.timestamp_us,
+                        recv_timestamp_us,
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                error!("Error receiving UDP packet: {}", e);
+                break;
+            }
+            Err(_) => {
+                // Timeout - continue to check if duration expired
+                continue;
+            }
+        }
+    }
+    
+    measurements.set_duration(start.elapsed());
+    Ok(())
+}
+
 async fn send_data(
     stream: &mut TcpStream,
     stream_id: usize,
     duration: Duration,
+    bandwidth: Option<u64>,
     measurements: &MeasurementsCollector,
     config: &Config,
 ) -> Result<()> {
@@ -361,11 +610,38 @@ async fn send_data(
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
 
+    // Bandwidth limiting
+    let target_bytes_per_sec = bandwidth.map(|bw| bw / 8);
+    let mut total_bytes_sent = 0u64;
+    let mut last_bandwidth_check = start;
+
     while start.elapsed() < duration {
         match stream.write(&buffer).await {
             Ok(n) => {
                 measurements.record_bytes_sent(stream_id, n as u64);
                 interval_bytes += n as u64;
+                total_bytes_sent += n as u64;
+
+                // Bandwidth limiting
+                if let Some(target_bps) = target_bytes_per_sec {
+                    let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
+                    
+                    if elapsed >= 0.001 {
+                        let expected_bytes = (target_bps as f64 * elapsed) as u64;
+                        let bytes_sent_in_period = total_bytes_sent;
+                        
+                        if bytes_sent_in_period > expected_bytes {
+                            let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
+                            let sleep_time = bytes_ahead / target_bps as f64;
+                            if sleep_time > 0.0001 {
+                                time::sleep(Duration::from_secs_f64(sleep_time)).await;
+                            }
+                        }
+                        
+                        last_bandwidth_check = Instant::now();
+                        total_bytes_sent = 0;
+                    }
+                }
 
                 // Report interval
                 if last_interval.elapsed() >= config.interval {

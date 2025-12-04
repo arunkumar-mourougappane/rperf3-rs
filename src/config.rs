@@ -255,9 +255,11 @@ impl Config {
         self
     }
 
-    /// Sets the target bandwidth for UDP tests.
+    /// Sets the target bandwidth for tests.
     ///
-    /// This option only applies to UDP tests. For TCP tests, it is ignored.
+    /// Controls the send rate for both TCP and UDP tests. The bandwidth limiter
+    /// uses a rate-based algorithm that checks bandwidth every 1ms and sleeps
+    /// when sending too fast.
     ///
     /// # Arguments
     ///
@@ -268,9 +270,15 @@ impl Config {
     /// ```
     /// use rperf3::{Config, Protocol};
     ///
-    /// let config = Config::client("127.0.0.1".to_string(), 5201)
+    /// // UDP test at 100 Mbps
+    /// let udp_config = Config::client("127.0.0.1".to_string(), 5201)
     ///     .with_protocol(Protocol::Udp)
     ///     .with_bandwidth(100_000_000); // 100 Mbps
+    ///
+    /// // TCP test at 50 Mbps
+    /// let tcp_config = Config::client("127.0.0.1".to_string(), 5201)
+    ///     .with_protocol(Protocol::Tcp)
+    ///     .with_bandwidth(50_000_000); // 50 Mbps
     /// ```
     pub fn with_bandwidth(mut self, bandwidth: u64) -> Self {
         self.bandwidth = Some(bandwidth);

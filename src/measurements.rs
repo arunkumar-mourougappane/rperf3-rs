@@ -332,7 +332,8 @@ impl StreamStats {
 
     pub fn bits_per_second(&self) -> f64 {
         if self.duration.as_secs_f64() > 0.0 {
-            (self.bytes_sent as f64 * 8.0) / self.duration.as_secs_f64()
+            let total_bytes = self.bytes_sent + self.bytes_received;
+            (total_bytes as f64 * 8.0) / self.duration.as_secs_f64()
         } else {
             0.0
         }
@@ -358,7 +359,16 @@ pub struct IntervalStats {
 /// Performance test measurements and statistics.
 ///
 /// This structure holds all collected statistics from a network performance test,
-/// including per-stream data, interval statistics, and aggregate totals.
+/// including per-stream data, interval statistics, aggregate totals, and UDP-specific
+/// metrics like packet loss and jitter.
+///
+/// # UDP Metrics
+///
+/// For UDP tests, additional metrics are tracked:
+/// - `total_packets`: Number of packets sent or expected based on sequence numbers
+/// - `lost_packets`: Number of packets lost (receiver-side measurement)
+/// - `out_of_order_packets`: Packets received out of sequence
+/// - `jitter_ms`: Network jitter in milliseconds (RFC 3550 algorithm)
 ///
 /// # Examples
 ///
@@ -370,7 +380,16 @@ pub struct IntervalStats {
 /// // After test completion
 /// let throughput_mbps = measurements.total_bits_per_second() / 1_000_000.0;
 /// println!("Average throughput: {:.2} Mbps", throughput_mbps);
-/// println!("Total transferred: {} bytes", measurements.total_bytes_sent);
+/// println!("Total transferred: {} bytes", 
+///          measurements.total_bytes_sent + measurements.total_bytes_received);
+///
+/// // UDP-specific metrics
+/// if measurements.total_packets > 0 {
+///     let loss_percent = (measurements.lost_packets as f64 / 
+///                         measurements.total_packets as f64) * 100.0;
+///     println!("Packet loss: {:.2}%", loss_percent);
+///     println!("Jitter: {:.3} ms", measurements.jitter_ms);
+/// }
 /// ```
 pub struct Measurements {
     pub streams: Vec<StreamStats>,
@@ -414,7 +433,8 @@ impl Measurements {
 
     /// Calculates the average throughput in bits per second.
     ///
-    /// Returns the total throughput based on bytes sent and test duration.
+    /// Returns the total throughput based on both bytes sent and received,
+    /// accounting for both normal and reverse mode tests.
     ///
     /// # Returns
     ///
@@ -427,15 +447,17 @@ impl Measurements {
     /// use std::time::Duration;
     ///
     /// let mut measurements = Measurements::new();
-    /// measurements.total_bytes_sent = 125_000_000; // 125 MB
+    /// measurements.total_bytes_sent = 100_000_000; // 100 MB sent
+    /// measurements.total_bytes_received = 25_000_000; // 25 MB received
     /// measurements.set_duration(Duration::from_secs(10));
     ///
     /// let throughput = measurements.total_bits_per_second();
-    /// assert_eq!(throughput, 100_000_000.0); // 100 Mbps
+    /// assert_eq!(throughput, 100_000_000.0); // 100 Mbps total
     /// ```
     pub fn total_bits_per_second(&self) -> f64 {
         if self.total_duration.as_secs_f64() > 0.0 {
-            (self.total_bytes_sent as f64 * 8.0) / self.total_duration.as_secs_f64()
+            let total_bytes = self.total_bytes_sent + self.total_bytes_received;
+            (total_bytes as f64 * 8.0) / self.total_duration.as_secs_f64()
         } else {
             0.0
         }
@@ -453,10 +475,24 @@ impl Measurements {
 
     pub fn set_duration(&mut self, duration: Duration) {
         self.total_duration = duration;
+        // Also update all stream durations
+        for stream in &mut self.streams {
+            stream.duration = duration;
+        }
     }
 
     pub fn set_start_time(&mut self, time: Instant) {
         self.start_time = Some(time);
+    }
+
+    /// Calculates UDP packet loss based on sequence numbers.
+    ///
+    /// This should only be called when receiving UDP packets.
+    /// Returns (lost_packets, expected_packets).
+    pub fn calculate_udp_loss(&self) -> (u64, u64) {
+        // For the snapshot, just return the pre-calculated values
+        // The actual calculation happens in MeasurementsCollector
+        (self.lost_packets, self.total_packets)
     }
 }
 
@@ -494,12 +530,14 @@ pub struct MeasurementsCollector {
 struct UdpPacketState {
     /// Last received sequence number
     last_sequence: Option<u64>,
-    /// Highest sequence number seen
-    max_sequence: u64,
+    /// Highest sequence number seen (None if no packets received yet)
+    max_sequence: Option<u64>,
     /// Count of received packets
     received_count: u64,
     /// Last packet arrival time in microseconds
     last_arrival_us: Option<u64>,
+    /// Last packet send timestamp in microseconds
+    last_send_timestamp_us: Option<u64>,
     /// Current jitter estimate in milliseconds (RFC 3550)
     jitter_ms: f64,
     /// Count of out-of-order packets
@@ -510,9 +548,10 @@ impl Default for UdpPacketState {
     fn default() -> Self {
         Self {
             last_sequence: None,
-            max_sequence: 0,
+            max_sequence: None,
             received_count: 0,
             last_arrival_us: None,
+            last_send_timestamp_us: None,
             jitter_ms: 0.0,
             out_of_order: 0,
         }
@@ -623,15 +662,22 @@ impl MeasurementsCollector {
     /// * `send_timestamp_us` - Send timestamp from packet header (microseconds)
     /// * `recv_timestamp_us` - Receive timestamp (microseconds)
     pub fn record_udp_packet_received(&self, sequence: u64, send_timestamp_us: u64, recv_timestamp_us: u64) {
+        // Ignore initialization packets (sequence == u64::MAX)
+        if sequence == u64::MAX {
+            return;
+        }
+        
         let mut state = self.udp_state.lock();
         let mut m = self.inner.lock();
 
         // Track received count
         state.received_count += 1;
 
-        // Track highest sequence number
-        if sequence > state.max_sequence {
-            state.max_sequence = sequence;
+        // Track highest sequence number seen
+        match state.max_sequence {
+            None => state.max_sequence = Some(sequence),
+            Some(max) if sequence > max => state.max_sequence = Some(sequence),
+            _ => {}
         }
 
         // Detect out-of-order packets
@@ -645,19 +691,28 @@ impl MeasurementsCollector {
         // Calculate jitter using RFC 3550 algorithm
         // J(i) = J(i-1) + (|D(i-1,i)| - J(i-1))/16
         // where D(i-1,i) is the difference in relative transit times
-        if let (Some(last_arrival), Some(_last_seq)) = (state.last_arrival_us, state.last_sequence) {
-            let arrival_delta = recv_timestamp_us.saturating_sub(last_arrival);
-            let send_delta = send_timestamp_us.saturating_sub(send_timestamp_us.saturating_sub(arrival_delta));
-            let transit_delta = arrival_delta.saturating_sub(send_delta);
+        // Transit time = receive_time - send_time
+        if let (Some(last_arrival), Some(last_send)) = (state.last_arrival_us, state.last_send_timestamp_us) {
+            // Current transit time
+            let current_transit = recv_timestamp_us.saturating_sub(send_timestamp_us);
+            // Previous transit time
+            let previous_transit = last_arrival.saturating_sub(last_send);
+            // Transit time difference
+            let transit_delta = if current_transit > previous_transit {
+                current_transit - previous_transit
+            } else {
+                previous_transit - current_transit
+            };
             
-            // Calculate jitter in milliseconds
-            let jitter_us = transit_delta as f64;
-            state.jitter_ms = state.jitter_ms + (jitter_us.abs() - state.jitter_ms) / 16.0;
-            m.jitter_ms = state.jitter_ms / 1000.0; // Convert to milliseconds
+            // Update jitter using RFC 3550 formula (in microseconds)
+            state.jitter_ms = state.jitter_ms + (transit_delta as f64 - state.jitter_ms) / 16.0;
+            // Store as milliseconds in measurements
+            m.jitter_ms = state.jitter_ms / 1000.0;
         }
 
         state.last_sequence = Some(sequence);
         state.last_arrival_us = Some(recv_timestamp_us);
+        state.last_send_timestamp_us = Some(send_timestamp_us);
     }
 
     /// Calculates packet loss statistics
@@ -675,8 +730,14 @@ impl MeasurementsCollector {
     pub fn calculate_udp_loss(&self) -> (u64, u64) {
         let state = self.udp_state.lock();
         
+        // If no packets received yet, return 0 loss
+        let max_seq = match state.max_sequence {
+            Some(max) => max,
+            None => return (0, 0),
+        };
+        
         // Expected packets is max sequence + 1 (sequences start at 0)
-        let expected = state.max_sequence + 1;
+        let expected = max_seq + 1;
         
         // Lost packets = expected - received
         let received = state.received_count;
@@ -748,7 +809,16 @@ impl MeasurementsCollector {
     /// assert_eq!(measurements.total_bytes_sent, 1024);
     /// ```
     pub fn get(&self) -> Measurements {
-        self.inner.lock().clone()
+        let mut m = self.inner.lock().clone();
+        
+        // Calculate UDP loss if we received packets
+        if m.total_bytes_received > 0 {
+            let (lost, expected) = self.calculate_udp_loss();
+            m.lost_packets = lost;
+            m.total_packets = expected;
+        }
+        
+        m
     }
 
     /// Gets statistics for a specific stream.

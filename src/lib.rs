@@ -10,6 +10,8 @@
 //!
 //! - **TCP and UDP Testing**: Measure throughput for both TCP and UDP protocols
 //! - **Bidirectional Testing**: Normal mode (client sends) and reverse mode (server sends)
+//! - **Bandwidth Limiting**: Control send rate with `-b` option (supports K/M/G notation)
+//! - **UDP Metrics**: Packet loss, jitter (RFC 3550), and out-of-order packet detection
 //! - **Real-time Statistics**: Periodic interval reporting with bandwidth measurements
 //! - **Progress Callbacks**: Get real-time updates during test execution via callbacks
 //! - **Multiple Streams**: Support for parallel stream testing
