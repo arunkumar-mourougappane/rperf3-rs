@@ -380,12 +380,12 @@ pub struct IntervalStats {
 /// // After test completion
 /// let throughput_mbps = measurements.total_bits_per_second() / 1_000_000.0;
 /// println!("Average throughput: {:.2} Mbps", throughput_mbps);
-/// println!("Total transferred: {} bytes", 
+/// println!("Total transferred: {} bytes",
 ///          measurements.total_bytes_sent + measurements.total_bytes_received);
 ///
 /// // UDP-specific metrics
 /// if measurements.total_packets > 0 {
-///     let loss_percent = (measurements.lost_packets as f64 / 
+///     let loss_percent = (measurements.lost_packets as f64 /
 ///                         measurements.total_packets as f64) * 100.0;
 ///     println!("Packet loss: {:.2}%", loss_percent);
 ///     println!("Jitter: {:.3} ms", measurements.jitter_ms);
@@ -515,7 +515,7 @@ impl Default for Measurements {
 ///
 /// let collector = MeasurementsCollector::new();
 /// collector.record_bytes_sent(0, 1024);
-/// 
+///
 /// let measurements = collector.get();
 /// assert_eq!(measurements.total_bytes_sent, 1024);
 /// ```
@@ -661,12 +661,17 @@ impl MeasurementsCollector {
     /// * `sequence` - Packet sequence number
     /// * `send_timestamp_us` - Send timestamp from packet header (microseconds)
     /// * `recv_timestamp_us` - Receive timestamp (microseconds)
-    pub fn record_udp_packet_received(&self, sequence: u64, send_timestamp_us: u64, recv_timestamp_us: u64) {
+    pub fn record_udp_packet_received(
+        &self,
+        sequence: u64,
+        send_timestamp_us: u64,
+        recv_timestamp_us: u64,
+    ) {
         // Ignore initialization packets (sequence == u64::MAX)
         if sequence == u64::MAX {
             return;
         }
-        
+
         let mut state = self.udp_state.lock();
         let mut m = self.inner.lock();
 
@@ -692,18 +697,16 @@ impl MeasurementsCollector {
         // J(i) = J(i-1) + (|D(i-1,i)| - J(i-1))/16
         // where D(i-1,i) is the difference in relative transit times
         // Transit time = receive_time - send_time
-        if let (Some(last_arrival), Some(last_send)) = (state.last_arrival_us, state.last_send_timestamp_us) {
+        if let (Some(last_arrival), Some(last_send)) =
+            (state.last_arrival_us, state.last_send_timestamp_us)
+        {
             // Current transit time
             let current_transit = recv_timestamp_us.saturating_sub(send_timestamp_us);
             // Previous transit time
             let previous_transit = last_arrival.saturating_sub(last_send);
             // Transit time difference
-            let transit_delta = if current_transit > previous_transit {
-                current_transit - previous_transit
-            } else {
-                previous_transit - current_transit
-            };
-            
+            let transit_delta = current_transit.abs_diff(previous_transit);
+
             // Update jitter using RFC 3550 formula (in microseconds)
             state.jitter_ms = state.jitter_ms + (transit_delta as f64 - state.jitter_ms) / 16.0;
             // Store as milliseconds in measurements
@@ -729,20 +732,20 @@ impl MeasurementsCollector {
     /// - `expected_packets` - Total number of packets that should have been received
     pub fn calculate_udp_loss(&self) -> (u64, u64) {
         let state = self.udp_state.lock();
-        
+
         // If no packets received yet, return 0 loss
         let max_seq = match state.max_sequence {
             Some(max) => max,
             None => return (0, 0),
         };
-        
+
         // Expected packets is max sequence + 1 (sequences start at 0)
         let expected = max_seq + 1;
-        
+
         // Lost packets = expected - received
         let received = state.received_count;
         let lost = expected.saturating_sub(received);
-        
+
         (lost, expected)
     }
 
@@ -804,20 +807,20 @@ impl MeasurementsCollector {
     ///
     /// let collector = MeasurementsCollector::new();
     /// collector.record_bytes_sent(0, 1024);
-    /// 
+    ///
     /// let measurements = collector.get();
     /// assert_eq!(measurements.total_bytes_sent, 1024);
     /// ```
     pub fn get(&self) -> Measurements {
         let mut m = self.inner.lock().clone();
-        
+
         // Calculate UDP loss if we received packets
         if m.total_bytes_received > 0 {
             let (lost, expected) = self.calculate_udp_loss();
             m.lost_packets = lost;
             m.total_packets = expected;
         }
-        
+
         m
     }
 
@@ -1020,10 +1023,10 @@ impl MeasurementsCollector {
         connection_info: &Option<ConnectionInfo>,
     ) -> TestEndInfo {
         let total_duration = m.total_duration.as_secs_f64();
-        
+
         // Calculate packet loss from sequence tracking
         let (lost_packets, expected_packets) = self.calculate_udp_loss();
-        
+
         let lost_percent = if expected_packets > 0 {
             (lost_packets as f64 / expected_packets as f64) * 100.0
         } else {
