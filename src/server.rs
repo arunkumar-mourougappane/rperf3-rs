@@ -316,13 +316,7 @@ async fn handle_tcp_client(
     // Check if this is UDP mode
     if protocol == "Udp" {
         // Handle UDP test via control channel
-        return handle_udp_test(
-            stream,
-            addr,
-            config,
-            measurements,
-        )
-        .await;
+        return handle_udp_test(stream, addr, config, measurements).await;
     }
 
     // Send setup acknowledgment for TCP
