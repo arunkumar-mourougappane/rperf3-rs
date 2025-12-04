@@ -150,12 +150,85 @@ impl Server {
         info!("UDP server listening on {}", bind_addr);
 
         let mut buf = vec![0u8; 65536];
+        let start = Instant::now();
+        let mut last_interval = start;
+        let mut interval_bytes = 0u64;
+        let mut interval_packets = 0u64;
 
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     debug!("Received {} bytes from {}", len, addr);
-                    // In a full implementation, we would handle UDP packets here
+                    
+                    // Parse UDP packet
+                    if let Some((header, _payload)) = crate::udp_packet::parse_packet(&buf[..len]) {
+                        // Get current receive timestamp
+                        let recv_timestamp_us = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .expect("Time went backwards")
+                            .as_micros() as u64;
+                        
+                        // Record packet with timing information
+                        self.measurements.record_udp_packet_received(
+                            header.sequence,
+                            header.timestamp_us,
+                            recv_timestamp_us,
+                        );
+                        self.measurements.record_bytes_received(0, len as u64);
+                        
+                        interval_bytes += len as u64;
+                        interval_packets += 1;
+                    } else {
+                        debug!("Received non-rperf3 UDP packet from {}", addr);
+                    }
+
+                    // Report interval
+                    if last_interval.elapsed() >= self.config.interval {
+                        let elapsed = start.elapsed();
+                        let interval_duration = last_interval.elapsed();
+                        let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+
+                        let interval_start = if elapsed > interval_duration {
+                            elapsed - interval_duration
+                        } else {
+                            Duration::ZERO
+                        };
+
+                        self.measurements.add_interval(IntervalStats {
+                            start: interval_start,
+                            end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                            packets: Some(interval_packets),
+                        });
+
+                        // Calculate current loss statistics
+                        let (lost, expected) = self.measurements.calculate_udp_loss();
+                        let loss_percent = if expected > 0 {
+                            (lost as f64 / expected as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+
+                        let measurements = self.measurements.get();
+
+                        if !self.config.json {
+                            println!(
+                                "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets, {:.2}% loss, {:.3} ms jitter)",
+                                interval_start.as_secs_f64(),
+                                elapsed.as_secs_f64(),
+                                interval_bytes,
+                                bps / 1_000_000.0,
+                                interval_packets,
+                                loss_percent,
+                                measurements.jitter_ms
+                            );
+                        }
+
+                        interval_bytes = 0;
+                        interval_packets = 0;
+                        last_interval = Instant::now();
+                    }
                 }
                 Err(e) => {
                     error!("Error receiving UDP packet: {}", e);

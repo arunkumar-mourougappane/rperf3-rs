@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Connection information
+/// Connection information for a test stream.
+///
+/// Contains details about the local and remote endpoints of a TCP connection.
+/// This information is collected at test start and included in detailed results.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionInfo {
     pub socket_fd: Option<i32>,
@@ -13,7 +16,10 @@ pub struct ConnectionInfo {
     pub remote_port: u16,
 }
 
-/// Test start configuration
+/// Test configuration parameters at test start.
+///
+/// Records the test parameters that were negotiated between client and server.
+/// This is included in detailed test results for reference.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
     pub protocol: String,
@@ -24,7 +30,10 @@ pub struct TestConfig {
     pub reverse: bool,
 }
 
-/// System information
+/// System information for test environment.
+///
+/// Contains version information and system details about the host running the test.
+/// Useful for correlating performance with hardware/software configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub version: String,
@@ -33,7 +42,11 @@ pub struct SystemInfo {
     pub timestamp_str: String,
 }
 
-/// TCP statistics for an interval
+/// TCP-specific statistics for a measurement interval.
+///
+/// Contains TCP protocol information collected from the socket during the test.
+/// These statistics are platform-specific and may not be available on all systems.
+/// On Linux, these values are read from `/proc/net/tcp` and socket options.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TcpStats {
     pub retransmits: u64,
@@ -43,7 +56,11 @@ pub struct TcpStats {
     pub pmtu: Option<u64>,
 }
 
-/// UDP statistics for an interval
+/// UDP-specific statistics for a measurement interval.
+///
+/// Contains UDP protocol information including packet loss and jitter measurements.
+/// Jitter is calculated using the RFC 3550 algorithm. Packet loss is determined by
+/// tracking sequence number gaps in received packets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UdpStats {
     pub jitter_ms: f64,
@@ -66,7 +83,10 @@ impl Default for UdpStats {
     }
 }
 
-/// Enhanced interval statistics with TCP info
+/// Enhanced interval statistics with TCP-specific information.
+///
+/// Extends basic interval statistics with detailed TCP metrics like retransmits,
+/// congestion window, and RTT measurements. Used for detailed JSON output format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetailedIntervalStats {
     pub socket: Option<i32>,
@@ -83,7 +103,10 @@ pub struct DetailedIntervalStats {
     pub sender: bool,
 }
 
-/// UDP-specific interval statistics
+/// UDP-specific interval statistics for detailed reporting.
+///
+/// Contains per-interval UDP measurements without the TCP-specific fields.
+/// Used in detailed JSON output format for UDP tests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UdpIntervalStats {
     pub socket: Option<i32>,
@@ -97,7 +120,11 @@ pub struct UdpIntervalStats {
     pub sender: bool,
 }
 
-/// Stream summary for end results
+/// Stream summary statistics for TCP test completion.
+///
+/// Aggregates all statistics for a single TCP stream over the entire test duration.
+/// Includes cumulative values (total bytes, retransmits) and statistical values
+/// (min/max/mean RTT, max congestion window).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamSummary {
     pub socket: Option<i32>,
@@ -114,7 +141,10 @@ pub struct StreamSummary {
     pub sender: bool,
 }
 
-/// UDP stream summary for end results
+/// UDP stream summary statistics for test completion.
+///
+/// Aggregates all UDP-specific statistics for a stream over the entire test duration,
+/// including packet counts, loss percentage, jitter, and out-of-order packets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UdpStreamSummary {
     pub socket: Option<i32>,
@@ -132,7 +162,10 @@ pub struct UdpStreamSummary {
     pub sender: bool,
 }
 
-/// UDP sum for end results
+/// Aggregate UDP statistics across all streams.
+///
+/// Sums up statistics from all parallel UDP streams to provide overall test results.
+/// Used in detailed JSON output format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UdpSum {
     pub start: f64,
@@ -147,7 +180,11 @@ pub struct UdpSum {
     pub sender: bool,
 }
 
-/// CPU utilization statistics
+/// CPU utilization statistics for performance analysis.
+///
+/// Tracks CPU usage on both local and remote hosts during the test.
+/// Helps identify whether CPU is a bottleneck for network performance.
+/// Values are percentages (0-100 per core, can exceed 100 on multi-core systems).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuUtilization {
     pub host_total: f64,
@@ -158,7 +195,11 @@ pub struct CpuUtilization {
     pub remote_system: f64,
 }
 
-/// Complete test results in iperf3 format
+/// Complete test results in iperf3-compatible JSON format.
+///
+/// This structure provides detailed test results that can be exported to JSON
+/// for compatibility with iperf3 tooling and parsers. It includes all test
+/// parameters, interval data, and final statistics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetailedTestResults {
     pub start: TestStartInfo,
@@ -166,6 +207,11 @@ pub struct DetailedTestResults {
     pub end: TestEndInfo,
 }
 
+/// Test start information including all configuration and connection details.
+///
+/// Captures the complete state at test initialization, including negotiated parameters,
+/// connection information, and system details. This is the `start` section in detailed
+/// JSON output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestStartInfo {
     pub connected: Vec<ConnectionInfo>,
@@ -181,18 +227,28 @@ pub struct TestStartInfo {
     pub test_start: TestConfig,
 }
 
+/// Timestamp information for test events.
+///
+/// Provides both human-readable and machine-readable timestamp formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimestampInfo {
     pub time: String,
     pub timesecs: i64,
 }
 
+/// Server connection target information.
+///
+/// Records the server address and port that the client connected to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectingTo {
     pub host: String,
     pub port: u16,
 }
 
+/// Interval measurement data, protocol-specific.
+///
+/// Discriminated union containing either TCP or UDP interval statistics.
+/// The format varies based on the protocol used for the test.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum IntervalData {
@@ -206,6 +262,11 @@ pub enum IntervalData {
     },
 }
 
+/// Test completion information, protocol-specific.
+///
+/// Discriminated union containing final test statistics for either TCP or UDP.
+/// TCP results include separate sender/receiver statistics, while UDP includes
+/// aggregated loss and jitter information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TestEndInfo {
@@ -228,18 +289,27 @@ pub enum TestEndInfo {
     },
 }
 
+/// Per-stream final statistics for TCP.
+///
+/// Contains both sender-side and receiver-side statistics for a single TCP stream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndStreamInfo {
     pub sender: StreamSummary,
     pub receiver: StreamSummary,
 }
 
+/// Per-stream final statistics for UDP.
+///
+/// Wraps UDP stream summary in a structure compatible with detailed JSON output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UdpEndStreamInfo {
     pub udp: UdpStreamSummary,
 }
 
-/// Statistics for a single stream (legacy support)
+/// Statistics for a single stream (simplified format).
+///
+/// Provides basic per-stream statistics in a simplified format. This is used
+/// for the default output format and backwards compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamStats {
     pub stream_id: usize,
@@ -269,7 +339,10 @@ impl StreamStats {
     }
 }
 
-/// Interval measurement
+/// Interval measurement in simplified format.
+///
+/// Contains basic statistics for a single reporting interval. Used for
+/// standard (non-JSON) output and progress callbacks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntervalStats {
     pub start: Duration,
@@ -393,19 +466,96 @@ impl Default for Measurements {
     }
 }
 
-/// Thread-safe measurements collector
+/// Thread-safe measurements collector for concurrent access.
+///
+/// This collector wraps `Measurements` in thread-safe structures to allow multiple
+/// streams or async tasks to record data concurrently. It also maintains UDP packet
+/// tracking state for jitter and loss calculations.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::measurements::MeasurementsCollector;
+///
+/// let collector = MeasurementsCollector::new();
+/// collector.record_bytes_sent(0, 1024);
+/// 
+/// let measurements = collector.get();
+/// assert_eq!(measurements.total_bytes_sent, 1024);
+/// ```
 #[derive(Debug, Clone)]
 pub struct MeasurementsCollector {
     inner: Arc<Mutex<Measurements>>,
+    udp_state: Arc<Mutex<UdpPacketState>>,
+}
+
+/// UDP packet tracking state
+#[derive(Debug, Clone)]
+struct UdpPacketState {
+    /// Last received sequence number
+    last_sequence: Option<u64>,
+    /// Highest sequence number seen
+    max_sequence: u64,
+    /// Count of received packets
+    received_count: u64,
+    /// Last packet arrival time in microseconds
+    last_arrival_us: Option<u64>,
+    /// Current jitter estimate in milliseconds (RFC 3550)
+    jitter_ms: f64,
+    /// Count of out-of-order packets
+    out_of_order: u64,
+}
+
+impl Default for UdpPacketState {
+    fn default() -> Self {
+        Self {
+            last_sequence: None,
+            max_sequence: 0,
+            received_count: 0,
+            last_arrival_us: None,
+            jitter_ms: 0.0,
+            out_of_order: 0,
+        }
+    }
 }
 
 impl MeasurementsCollector {
+    /// Creates a new measurements collector.
+    ///
+    /// Initializes an empty collector with no recorded data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::measurements::MeasurementsCollector;
+    ///
+    /// let collector = MeasurementsCollector::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(Measurements::new())),
+            udp_state: Arc::new(Mutex::new(UdpPacketState::default())),
         }
     }
 
+    /// Records bytes sent on a specific stream.
+    ///
+    /// Updates both per-stream and total byte counts. Creates a new stream
+    /// entry if the stream ID hasn't been seen before.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream_id` - The stream identifier
+    /// * `bytes` - Number of bytes sent
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::measurements::MeasurementsCollector;
+    ///
+    /// let collector = MeasurementsCollector::new();
+    /// collector.record_bytes_sent(0, 1024);
+    /// ```
     pub fn record_bytes_sent(&self, stream_id: usize, bytes: u64) {
         let mut m = self.inner.lock();
         if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
@@ -418,6 +568,15 @@ impl MeasurementsCollector {
         m.total_bytes_sent += bytes;
     }
 
+    /// Records bytes received on a specific stream.
+    ///
+    /// Updates both per-stream and total byte counts. Creates a new stream
+    /// entry if the stream ID hasn't been seen before.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream_id` - The stream identifier
+    /// * `bytes` - Number of bytes received
     pub fn record_bytes_received(&self, stream_id: usize, bytes: u64) {
         let mut m = self.inner.lock();
         if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
@@ -430,20 +589,117 @@ impl MeasurementsCollector {
         m.total_bytes_received += bytes;
     }
 
+    /// Adds an interval measurement.
+    ///
+    /// Records statistics for a specific time interval during the test.
+    ///
+    /// # Arguments
+    ///
+    /// * `interval` - The interval statistics to record
     pub fn add_interval(&self, interval: IntervalStats) {
         self.inner.lock().add_interval(interval);
     }
 
+    /// Records that a UDP packet was sent.
+    ///
+    /// Increments the total packet count for UDP tests.
+    ///
+    /// # Arguments
+    ///
+    /// * `_stream_id` - The stream identifier (currently unused)
     pub fn record_udp_packet(&self, _stream_id: usize) {
         let mut m = self.inner.lock();
         m.total_packets += 1;
     }
 
+    /// Records a received UDP packet with sequence number and timestamp
+    ///
+    /// Tracks packet loss, out-of-order delivery, and calculates jitter
+    /// according to RFC 3550 (RTP).
+    ///
+    /// # Arguments
+    ///
+    /// * `sequence` - Packet sequence number
+    /// * `send_timestamp_us` - Send timestamp from packet header (microseconds)
+    /// * `recv_timestamp_us` - Receive timestamp (microseconds)
+    pub fn record_udp_packet_received(&self, sequence: u64, send_timestamp_us: u64, recv_timestamp_us: u64) {
+        let mut state = self.udp_state.lock();
+        let mut m = self.inner.lock();
+
+        // Track received count
+        state.received_count += 1;
+
+        // Track highest sequence number
+        if sequence > state.max_sequence {
+            state.max_sequence = sequence;
+        }
+
+        // Detect out-of-order packets
+        if let Some(last_seq) = state.last_sequence {
+            if sequence < last_seq {
+                state.out_of_order += 1;
+                m.out_of_order_packets += 1;
+            }
+        }
+
+        // Calculate jitter using RFC 3550 algorithm
+        // J(i) = J(i-1) + (|D(i-1,i)| - J(i-1))/16
+        // where D(i-1,i) is the difference in relative transit times
+        if let (Some(last_arrival), Some(_last_seq)) = (state.last_arrival_us, state.last_sequence) {
+            let arrival_delta = recv_timestamp_us.saturating_sub(last_arrival);
+            let send_delta = send_timestamp_us.saturating_sub(send_timestamp_us.saturating_sub(arrival_delta));
+            let transit_delta = arrival_delta.saturating_sub(send_delta);
+            
+            // Calculate jitter in milliseconds
+            let jitter_us = transit_delta as f64;
+            state.jitter_ms = state.jitter_ms + (jitter_us.abs() - state.jitter_ms) / 16.0;
+            m.jitter_ms = state.jitter_ms / 1000.0; // Convert to milliseconds
+        }
+
+        state.last_sequence = Some(sequence);
+        state.last_arrival_us = Some(recv_timestamp_us);
+    }
+
+    /// Calculates packet loss statistics
+    ///
+    /// Returns (lost_packets, total_expected_packets)
+    /// Calculates UDP packet loss based on sequence numbers.
+    ///
+    /// Compares received packets against expected sequence range to determine loss.
+    ///
+    /// # Returns
+    ///
+    /// A tuple of `(lost_packets, expected_packets)`:
+    /// - `lost_packets` - Number of packets that were not received
+    /// - `expected_packets` - Total number of packets that should have been received
+    pub fn calculate_udp_loss(&self) -> (u64, u64) {
+        let state = self.udp_state.lock();
+        
+        // Expected packets is max sequence + 1 (sequences start at 0)
+        let expected = state.max_sequence + 1;
+        
+        // Lost packets = expected - received
+        let received = state.received_count;
+        let lost = expected.saturating_sub(received);
+        
+        (lost, expected)
+    }
+
+    /// Records UDP packet loss count.
+    ///
+    /// # Arguments
+    ///
+    /// * `lost` - Number of lost packets
     pub fn record_udp_loss(&self, lost: u64) {
         let mut m = self.inner.lock();
         m.lost_packets += lost;
     }
 
+    /// Updates the jitter measurement.
+    ///
+    /// # Arguments
+    ///
+    /// * `jitter` - Jitter value in milliseconds (calculated via RFC 3550)
     pub fn update_jitter(&self, jitter: f64) {
         let mut m = self.inner.lock();
         // Simple exponential moving average
@@ -454,18 +710,56 @@ impl MeasurementsCollector {
         };
     }
 
+    /// Sets the total test duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The actual test duration
     pub fn set_duration(&self, duration: Duration) {
         self.inner.lock().set_duration(duration);
     }
 
+    /// Sets the test start time.
+    ///
+    /// # Arguments
+    ///
+    /// * `time` - The instant when the test started
     pub fn set_start_time(&self, time: Instant) {
         self.inner.lock().set_start_time(time);
     }
 
+    /// Returns a snapshot of the current measurements.
+    ///
+    /// Creates a copy of all collected statistics at the current point in time.
+    ///
+    /// # Returns
+    ///
+    /// A `Measurements` struct containing all collected data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::measurements::MeasurementsCollector;
+    ///
+    /// let collector = MeasurementsCollector::new();
+    /// collector.record_bytes_sent(0, 1024);
+    /// 
+    /// let measurements = collector.get();
+    /// assert_eq!(measurements.total_bytes_sent, 1024);
+    /// ```
     pub fn get(&self) -> Measurements {
         self.inner.lock().clone()
     }
 
+    /// Gets statistics for a specific stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream_id` - The stream identifier to retrieve
+    ///
+    /// # Returns
+    ///
+    /// `Some(StreamStats)` if the stream exists, `None` otherwise.
     pub fn get_stream_stats(&self, stream_id: usize) -> Option<StreamStats> {
         self.inner
             .lock()
@@ -656,8 +950,12 @@ impl MeasurementsCollector {
         connection_info: &Option<ConnectionInfo>,
     ) -> TestEndInfo {
         let total_duration = m.total_duration.as_secs_f64();
-        let lost_percent = if m.total_packets > 0 {
-            (m.lost_packets as f64 / m.total_packets as f64) * 100.0
+        
+        // Calculate packet loss from sequence tracking
+        let (lost_packets, expected_packets) = self.calculate_udp_loss();
+        
+        let lost_percent = if expected_packets > 0 {
+            (lost_packets as f64 / expected_packets as f64) * 100.0
         } else {
             0.0
         };
@@ -667,31 +965,39 @@ impl MeasurementsCollector {
             start: 0.0,
             end: total_duration,
             seconds: total_duration,
-            bytes: m.total_bytes_sent,
-            bits_per_second: m.total_bits_per_second(),
+            bytes: m.total_bytes_sent + m.total_bytes_received,
+            bits_per_second: if total_duration > 0.0 {
+                ((m.total_bytes_sent + m.total_bytes_received) as f64 * 8.0) / total_duration
+            } else {
+                0.0
+            },
             jitter_ms: m.jitter_ms,
-            lost_packets: m.lost_packets,
-            packets: m.total_packets,
+            lost_packets,
+            packets: expected_packets,
             lost_percent,
             out_of_order: if m.out_of_order_packets > 0 {
                 Some(m.out_of_order_packets)
             } else {
                 None
             },
-            sender: true,
+            sender: m.total_bytes_sent > m.total_bytes_received,
         };
 
         let udp_sum = UdpSum {
             start: 0.0,
             end: total_duration,
             seconds: total_duration,
-            bytes: m.total_bytes_sent,
-            bits_per_second: m.total_bits_per_second(),
+            bytes: m.total_bytes_sent + m.total_bytes_received,
+            bits_per_second: if total_duration > 0.0 {
+                ((m.total_bytes_sent + m.total_bytes_received) as f64 * 8.0) / total_duration
+            } else {
+                0.0
+            },
             jitter_ms: m.jitter_ms,
-            lost_packets: m.lost_packets,
-            packets: m.total_packets,
+            lost_packets,
+            packets: expected_packets,
             lost_percent,
-            sender: true,
+            sender: m.total_bytes_sent > m.total_bytes_received,
         };
 
         TestEndInfo::Udp {

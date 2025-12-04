@@ -85,7 +85,7 @@
 //!                         bytes,
 //!                         bits_per_second / 1_000_000.0);
 //!                 }
-//!                 ProgressEvent::TestCompleted { total_bytes, duration, bits_per_second } => {
+//!                 ProgressEvent::TestCompleted { total_bytes, duration, bits_per_second, .. } => {
 //!                     println!("Completed: {} bytes in {:.2}s @ {:.2} Mbps",
 //!                         total_bytes,
 //!                         duration.as_secs_f64(),
@@ -119,6 +119,7 @@ pub mod error;
 pub mod measurements;
 pub mod protocol;
 pub mod server;
+pub mod udp_packet;
 
 pub use client::{Client, ProgressCallback, ProgressEvent};
 pub use config::{Config, Protocol};

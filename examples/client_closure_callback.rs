@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 total_bytes,
                 duration,
                 bits_per_second,
+                ..
             } => {
                 println!("\n🎉 Test finished!");
                 println!("   {} bytes in {:.2}s", total_bytes, duration.as_secs_f64());

@@ -63,11 +63,21 @@ pub enum ProgressEvent {
     /// * `interval_end` - End time of this interval relative to test start
     /// * `bytes` - Number of bytes transferred during this interval
     /// * `bits_per_second` - Throughput in bits per second for this interval
+    /// * `packets` - Number of packets (UDP only)
+    /// * `jitter_ms` - Jitter in milliseconds (UDP only)
+    /// * `lost_packets` - Number of lost packets (UDP only)
+    /// * `lost_percent` - Packet loss percentage (UDP only)
+    /// * `retransmits` - Number of TCP retransmits (TCP only)
     IntervalUpdate {
         interval_start: Duration,
         interval_end: Duration,
         bytes: u64,
         bits_per_second: f64,
+        packets: Option<u64>,
+        jitter_ms: Option<f64>,
+        lost_packets: Option<u64>,
+        lost_percent: Option<f64>,
+        retransmits: Option<u64>,
     },
     /// Test completed with final measurements.
     ///
@@ -78,10 +88,20 @@ pub enum ProgressEvent {
     /// * `total_bytes` - Total bytes transferred during the entire test
     /// * `duration` - Actual test duration
     /// * `bits_per_second` - Average throughput over the entire test
+    /// * `total_packets` - Total packets sent/received (UDP only)
+    /// * `jitter_ms` - Final jitter measurement in milliseconds (UDP only)
+    /// * `lost_packets` - Total lost packets (UDP only)
+    /// * `lost_percent` - Final packet loss percentage (UDP only)
+    /// * `out_of_order` - Out-of-order packet count (UDP only)
     TestCompleted {
         total_bytes: u64,
         duration: Duration,
         bits_per_second: f64,
+        total_packets: Option<u64>,
+        jitter_ms: Option<f64>,
+        lost_packets: Option<u64>,
+        lost_percent: Option<f64>,
+        out_of_order: Option<u64>,
     },
     /// Error occurred during test execution.
     ///
@@ -453,6 +473,20 @@ impl Client {
         }
 
         let final_measurements = self.measurements.get();
+        
+        // Notify callback of completion
+        self.notify(ProgressEvent::TestCompleted {
+            total_bytes: final_measurements.total_bytes_sent
+                + final_measurements.total_bytes_received,
+            duration: final_measurements.total_duration,
+            bits_per_second: final_measurements.total_bits_per_second(),
+            total_packets: None, // TCP doesn't track packets
+            jitter_ms: None,
+            lost_packets: None,
+            lost_percent: None,
+            out_of_order: None,
+        });
+        
         if !self.config.json {
             print_results(&final_measurements);
         } else {
@@ -482,11 +516,18 @@ impl Client {
         info!("UDP client connected to {}", server_addr);
         self.notify(ProgressEvent::TestStarted);
 
-        let buffer = vec![0u8; self.config.buffer_size];
         let start = Instant::now();
         let mut last_interval = start;
         let mut interval_bytes = 0u64;
         let mut interval_packets = 0u64;
+        let mut sequence = 0u64;
+
+        // Calculate payload size accounting for UDP packet header
+        let payload_size = if self.config.buffer_size > crate::udp_packet::UdpPacketHeader::SIZE {
+            self.config.buffer_size - crate::udp_packet::UdpPacketHeader::SIZE
+        } else {
+            1024
+        };
 
         // Calculate delay between packets for bandwidth limiting
         let packet_delay = if let Some(bandwidth) = self.config.bandwidth {
@@ -502,12 +543,15 @@ impl Client {
         };
 
         while start.elapsed() < self.config.duration {
-            match socket.send(&buffer).await {
+            let packet = crate::udp_packet::create_packet(sequence, payload_size);
+            
+            match socket.send(&packet).await {
                 Ok(n) => {
                     self.measurements.record_bytes_sent(0, n as u64);
                     self.measurements.record_udp_packet(0);
                     interval_bytes += n as u64;
                     interval_packets += 1;
+                    sequence += 1;
 
                     // Report interval
                     if last_interval.elapsed() >= self.config.interval {
@@ -529,12 +573,26 @@ impl Client {
                             packets: Some(interval_packets),
                         });
 
+                        // Calculate UDP metrics for callback
+                        let (lost, expected) = self.measurements.calculate_udp_loss();
+                        let loss_percent = if expected > 0 {
+                            (lost as f64 / expected as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        let measurements = self.measurements.get();
+
                         // Notify callback
                         self.notify(ProgressEvent::IntervalUpdate {
                             interval_start,
                             interval_end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
+                            packets: Some(interval_packets),
+                            jitter_ms: Some(measurements.jitter_ms),
+                            lost_packets: Some(lost),
+                            lost_percent: Some(loss_percent),
+                            retransmits: None,
                         });
 
                         if !self.config.json {
@@ -568,12 +626,25 @@ impl Client {
 
         let final_measurements = self.measurements.get();
 
+        // Calculate final UDP metrics
+        let (lost, expected) = self.measurements.calculate_udp_loss();
+        let loss_percent = if expected > 0 {
+            (lost as f64 / expected as f64) * 100.0
+        } else {
+            0.0
+        };
+
         // Notify callback of completion
         self.notify(ProgressEvent::TestCompleted {
             total_bytes: final_measurements.total_bytes_sent
                 + final_measurements.total_bytes_received,
             duration: final_measurements.total_duration,
             bits_per_second: final_measurements.total_bits_per_second(),
+            total_packets: Some(final_measurements.total_packets),
+            jitter_ms: Some(final_measurements.jitter_ms),
+            lost_packets: Some(lost),
+            lost_percent: Some(loss_percent),
+            out_of_order: Some(final_measurements.out_of_order_packets),
         });
 
         if !self.config.json {
@@ -629,6 +700,15 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Returns
+    ///
+    /// A snapshot of test measurements including:
+    /// - Total bytes sent/received
+    /// - Test duration
+    /// - Per-stream statistics
+    /// - Interval measurements
+    /// - UDP-specific metrics (packets, loss, jitter) if applicable
     pub fn get_measurements(&self) -> crate::Measurements {
         self.measurements.get()
     }
@@ -679,6 +759,11 @@ async fn send_data(
                             interval_end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
+                            packets: None,
+                            jitter_ms: None,
+                            lost_packets: None,
+                            lost_percent: None,
+                            retransmits: None,
                         });
                     }
 
@@ -758,6 +843,11 @@ async fn receive_data(
                             interval_end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
+                            packets: None,
+                            jitter_ms: None,
+                            lost_packets: None,
+                            lost_percent: None,
+                            retransmits: None,
                         });
                     }
 
@@ -819,5 +909,27 @@ fn print_results(measurements: &crate::Measurements) {
         "Bandwidth: {:.2} Mbps",
         measurements.total_bits_per_second() / 1_000_000.0
     );
+    
+    // Show UDP statistics if available
+    if measurements.total_packets > 0 {
+        let lost_percent = if measurements.total_packets > 0 {
+            (measurements.lost_packets as f64 / measurements.total_packets as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        println!(
+            "UDP: {} packets sent, {} lost ({:.2}%), {:.3} ms jitter",
+            measurements.total_packets,
+            measurements.lost_packets,
+            lost_percent,
+            measurements.jitter_ms
+        );
+        
+        if measurements.out_of_order_packets > 0 {
+            println!("     {} out-of-order packets", measurements.out_of_order_packets);
+        }
+    }
+    
     println!("- - - - - - - - - - - - - - - - - - - - - - - - -\n");
 }
