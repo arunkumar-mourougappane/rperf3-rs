@@ -43,9 +43,9 @@ fn test_measurements() {
     assert_eq!(measurements.total_bytes_received, 500);
     assert_eq!(measurements.total_duration, Duration::from_secs(1));
 
-    // Should calculate bits per second correctly
+    // Should calculate bits per second correctly (bidirectional)
     let bps = measurements.total_bits_per_second();
-    assert_eq!(bps, 24000.0); // 3000 bytes * 8 bits / 1 second
+    assert_eq!(bps, 28000.0); // (3000 + 500) bytes * 8 bits / 1 second
 }
 
 #[test]
