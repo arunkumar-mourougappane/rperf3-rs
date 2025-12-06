@@ -1,6 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
-use crate::measurements::{IntervalStats, MeasurementsCollector};
+use crate::measurements::{get_tcp_stats, IntervalStats, MeasurementsCollector};
 use crate::protocol::{deserialize_message, serialize_message, Message};
 use crate::{Error, Result};
 use log::{debug, error, info};
@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 /// Network performance test server.
 ///
@@ -64,6 +65,7 @@ pub struct Server {
     measurements: MeasurementsCollector,
     tcp_buffer_pool: Arc<BufferPool>,
     udp_buffer_pool: Arc<BufferPool>,
+    cancellation_token: CancellationToken,
 }
 
 impl Server {
@@ -95,7 +97,38 @@ impl Server {
             measurements: MeasurementsCollector::new(),
             tcp_buffer_pool,
             udp_buffer_pool,
+            cancellation_token: CancellationToken::new(),
         }
+    }
+
+    /// Returns a reference to the cancellation token.
+    ///
+    /// This allows external code to cancel the running server gracefully.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Server, Config};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::server(5201);
+    /// let server = Server::new(config);
+    ///
+    /// // Get cancellation token to stop from another task
+    /// let cancel_token = server.cancellation_token().clone();
+    ///
+    /// tokio::spawn(async move {
+    ///     // Server will be running
+    /// });
+    ///
+    /// // Later, to stop the server:
+    /// cancel_token.cancel();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn cancellation_token(&self) -> &CancellationToken {
+        &self.cancellation_token
     }
 
     /// Starts the server and begins listening for client connections.
@@ -148,34 +181,49 @@ impl Server {
         info!("TCP server listening on {}", bind_addr);
 
         loop {
-            match listener.accept().await {
-                Ok((stream, addr)) => {
-                    info!("New connection from {}", addr);
-                    let config = self.config.clone();
-                    let measurements = self.measurements.clone();
-                    let tcp_buffer_pool = self.tcp_buffer_pool.clone();
-                    let udp_buffer_pool = self.udp_buffer_pool.clone();
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Server shutting down gracefully");
+                break;
+            }
 
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_tcp_client(
-                            stream,
-                            addr,
-                            config,
-                            measurements,
-                            tcp_buffer_pool,
-                            udp_buffer_pool,
-                        )
-                        .await
-                        {
-                            error!("Error handling client {}: {}", addr, e);
+            tokio::select! {
+                accept_result = listener.accept() => {
+                    match accept_result {
+                        Ok((stream, addr)) => {
+                            info!("New connection from {}", addr);
+                            let config = self.config.clone();
+                            let measurements = self.measurements.clone();
+                            let tcp_buffer_pool = self.tcp_buffer_pool.clone();
+                            let udp_buffer_pool = self.udp_buffer_pool.clone();
+
+                            tokio::spawn(async move {
+                                if let Err(e) = handle_tcp_client(
+                                    stream,
+                                    addr,
+                                    config,
+                                    measurements,
+                                    tcp_buffer_pool,
+                                    udp_buffer_pool,
+                                )
+                                .await
+                                {
+                                    error!("Error handling client {}: {}", addr, e);
+                                }
+                            });
                         }
-                    });
+                        Err(e) => {
+                            error!("Error accepting connection: {}", e);
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!("Error accepting connection: {}", e);
+                _ = self.cancellation_token.cancelled() => {
+                    info!("Server shutting down gracefully");
+                    break;
                 }
             }
         }
+        Ok(())
     }
 
     async fn run_udp(&self, bind_addr: &str) -> Result<()> {
@@ -189,6 +237,12 @@ impl Server {
         let mut interval_packets = 0u64;
 
         loop {
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Server shutting down gracefully");
+                break;
+            }
+
             match socket.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     debug!("Received {} bytes from {}", len, addr);
@@ -268,6 +322,8 @@ impl Server {
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Retrieves the current measurements collected by the server.
@@ -670,6 +726,7 @@ async fn send_data(
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
+    let mut last_retransmits = 0u64;
 
     // Bandwidth limiting
     let target_bytes_per_sec = bandwidth.map(|bw| bw / 8);
@@ -716,6 +773,13 @@ async fn send_data(
                         Duration::ZERO
                     };
 
+                    // Get TCP stats for retransmits
+                    let tcp_stats = get_tcp_stats(stream).ok();
+                    let current_retransmits =
+                        tcp_stats.as_ref().map(|s| s.retransmits).unwrap_or(0);
+                    let interval_retransmits = current_retransmits.saturating_sub(last_retransmits);
+                    last_retransmits = current_retransmits;
+
                     measurements.add_interval(IntervalStats {
                         start: interval_start,
                         end: elapsed,
@@ -723,6 +787,17 @@ async fn send_data(
                         bits_per_second: bps,
                         packets: None,
                     });
+
+                    if !config.json && interval_retransmits > 0 {
+                        println!(
+                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} retransmits)",
+                            interval_start.as_secs_f64(),
+                            elapsed.as_secs_f64(),
+                            interval_bytes,
+                            bps / 1_000_000.0,
+                            interval_retransmits
+                        );
+                    }
 
                     interval_bytes = 0;
                     last_interval = Instant::now();
@@ -753,6 +828,7 @@ async fn receive_data(
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
+    let mut last_retransmits = 0u64;
 
     while start.elapsed() < duration {
         match time::timeout(Duration::from_millis(100), stream.read(&mut buffer)).await {
@@ -776,6 +852,13 @@ async fn receive_data(
                         Duration::ZERO
                     };
 
+                    // Get TCP stats for retransmits
+                    let tcp_stats = get_tcp_stats(stream).ok();
+                    let current_retransmits =
+                        tcp_stats.as_ref().map(|s| s.retransmits).unwrap_or(0);
+                    let interval_retransmits = current_retransmits.saturating_sub(last_retransmits);
+                    last_retransmits = current_retransmits;
+
                     measurements.add_interval(IntervalStats {
                         start: interval_start,
                         end: elapsed,
@@ -783,6 +866,17 @@ async fn receive_data(
                         bits_per_second: bps,
                         packets: None,
                     });
+
+                    if !config.json && interval_retransmits > 0 {
+                        println!(
+                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} retransmits)",
+                            interval_start.as_secs_f64(),
+                            elapsed.as_secs_f64(),
+                            interval_bytes,
+                            bps / 1_000_000.0,
+                            interval_retransmits
+                        );
+                    }
 
                     interval_bytes = 0;
                     last_interval = Instant::now();

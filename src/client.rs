@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 /// Progress event types reported during test execution.
 ///
@@ -263,6 +264,8 @@ pub struct Client {
     callback: Option<CallbackRef>,
     tcp_buffer_pool: Arc<BufferPool>,
     udp_buffer_pool: Arc<BufferPool>,
+    cancellation_token: CancellationToken,
+    stream_id: usize,
 }
 
 impl Client {
@@ -305,6 +308,8 @@ impl Client {
             callback: None,
             tcp_buffer_pool,
             udp_buffer_pool,
+            cancellation_token: CancellationToken::new(),
+            stream_id: 5, // Use stream ID 5 like iperf3
         })
     }
 
@@ -346,6 +351,37 @@ impl Client {
         if let Some(callback) = &self.callback {
             callback.on_progress(event);
         }
+    }
+
+    /// Returns a reference to the cancellation token.
+    ///
+    /// This allows external code to cancel the running test gracefully.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rperf3::{Client, Config};
+    /// use std::time::Duration;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::client("127.0.0.1".to_string(), 5201);
+    /// let client = Client::new(config)?;
+    ///
+    /// // Get cancellation token to cancel from another task
+    /// let cancel_token = client.cancellation_token().clone();
+    ///
+    /// tokio::spawn(async move {
+    ///     tokio::time::sleep(Duration::from_secs(5)).await;
+    ///     cancel_token.cancel();
+    /// });
+    ///
+    /// client.run().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn cancellation_token(&self) -> &CancellationToken {
+        &self.cancellation_token
     }
 
     /// Runs the network performance test.
@@ -398,6 +434,25 @@ impl Client {
         let mut stream = TcpStream::connect(server_addr).await?;
         info!("Connected to {}", server_addr);
 
+        // Print iperf3-style connection info
+        if !self.config.json {
+            let local_addr = stream.local_addr()?;
+            let remote_addr = stream.peer_addr()?;
+            println!(
+                "Connecting to host {}, port {}",
+                remote_addr.ip(),
+                remote_addr.port()
+            );
+            println!(
+                "[{:3}] local {} port {} connected to {} port {}",
+                self.stream_id,
+                local_addr.ip(),
+                local_addr.port(),
+                remote_addr.ip(),
+                remote_addr.port()
+            );
+        }
+
         // Collect connection and system information
         let connection_info = get_connection_info(&stream).ok();
         let system_info = Some(get_system_info());
@@ -443,32 +498,40 @@ impl Client {
 
         self.measurements.set_start_time(Instant::now());
 
+        // Print iperf3-style header
+        if !self.config.json {
+            if self.config.reverse {
+                println!("[ ID] Interval           Transfer     Bitrate         Retr");
+            } else {
+                println!("[ ID] Interval           Transfer     Bitrate         Retr  Cwnd");
+            }
+        }
+
         if self.config.reverse {
             // Client receives data from server
             receive_data(
                 &mut stream,
-                0,
+                self.stream_id,
                 &self.measurements,
                 &self.config,
                 &self.callback,
                 self.tcp_buffer_pool.clone(),
+                &self.cancellation_token,
             )
             .await?;
         } else {
             // Client sends data to server
             send_data(
                 &mut stream,
-                0,
+                self.stream_id,
                 &self.measurements,
                 &self.config,
                 &self.callback,
                 self.tcp_buffer_pool.clone(),
+                &self.cancellation_token,
             )
             .await?;
         }
-
-        // Collect TCP stats before closing
-        let _tcp_stats = get_tcp_stats(&stream).ok();
 
         // Read final results - handle connection errors gracefully
         match deserialize_message(&mut stream).await {
@@ -536,7 +599,7 @@ impl Client {
         });
 
         if !self.config.json {
-            print_results(&final_measurements);
+            print_results(&final_measurements, self.stream_id, self.config.reverse);
         } else {
             // Use detailed results for JSON output
             let test_config = TestConfig {
@@ -607,6 +670,26 @@ impl Client {
 
         info!("UDP client connected to {}", server_addr);
 
+        // Print iperf3-style connection info
+        if !self.config.json {
+            let local_addr = socket.local_addr()?;
+            let remote_addr = socket.peer_addr()?;
+            println!(
+                "Connecting to host {}, port {}",
+                remote_addr.ip(),
+                remote_addr.port()
+            );
+            println!(
+                "[{:3}] local {} port {} connected to {} port {}",
+                self.stream_id,
+                local_addr.ip(),
+                local_addr.port(),
+                remote_addr.ip(),
+                remote_addr.port()
+            );
+            println!("[ ID] Interval           Transfer     Bitrate         Total Datagrams");
+        }
+
         let result = if self.config.reverse {
             // Reverse mode: Send one initialization packet to let server know our UDP port
             let init_packet = crate::udp_packet::create_packet(0, 0);
@@ -647,6 +730,12 @@ impl Client {
         let mut last_bandwidth_check = start;
 
         while start.elapsed() < self.config.duration {
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Test cancelled by user");
+                break;
+            }
+
             let packet = crate::udp_packet::create_packet_fast(sequence, payload_size);
 
             match socket.send(&packet).await {
@@ -726,12 +815,24 @@ impl Client {
                         });
 
                         if !self.config.json {
+                            // Format bytes as KBytes or MBytes
+                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
+                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                            } else {
+                                (interval_bytes as f64 / 1_000.0, "KBytes")
+                            };
+
+                            // Format bitrate as Mbits/sec
+                            let bitrate_val = bps / 1_000_000.0;
+
                             println!(
-                                "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
+                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
+                                self.stream_id,
                                 interval_start.as_secs_f64(),
                                 elapsed.as_secs_f64(),
-                                interval_bytes,
-                                bps / 1_000_000.0,
+                                transfer_val,
+                                transfer_unit,
+                                bitrate_val,
                                 interval_packets
                             );
                         }
@@ -773,7 +874,7 @@ impl Client {
         });
 
         if !self.config.json {
-            print_results(&final_measurements);
+            print_results(&final_measurements, self.stream_id, self.config.reverse);
         } else {
             // Use detailed results for JSON output
             let system_info = Some(get_system_info());
@@ -805,6 +906,12 @@ impl Client {
         let mut buffer = self.udp_buffer_pool.get();
 
         while start.elapsed() < self.config.duration {
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Test cancelled by user");
+                break;
+            }
+
             // Set a timeout for recv to check duration periodically
             let timeout =
                 tokio::time::timeout(Duration::from_millis(100), socket.recv(&mut buffer));
@@ -874,12 +981,24 @@ impl Client {
                         });
 
                         if !self.config.json {
+                            // Format bytes as KBytes or MBytes
+                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
+                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                            } else {
+                                (interval_bytes as f64 / 1_000.0, "KBytes")
+                            };
+
+                            // Format bitrate as Mbits/sec
+                            let bitrate_val = bps / 1_000_000.0;
+
                             println!(
-                                "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
+                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
+                                self.stream_id,
                                 interval_start.as_secs_f64(),
                                 elapsed.as_secs_f64(),
-                                interval_bytes,
-                                bps / 1_000_000.0,
+                                transfer_val,
+                                transfer_unit,
+                                bitrate_val,
                                 interval_packets
                             );
                         }
@@ -925,7 +1044,7 @@ impl Client {
         });
 
         if !self.config.json {
-            print_results(&final_measurements);
+            print_results(&final_measurements, self.stream_id, self.config.reverse);
         } else {
             // Use detailed results for JSON output
             let system_info = Some(get_system_info());
@@ -1010,13 +1129,21 @@ async fn send_data(
     config: &Config,
     callback: &Option<CallbackRef>,
     buffer_pool: Arc<BufferPool>,
+    cancel_token: &CancellationToken,
 ) -> Result<()> {
     let buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
+    let mut last_retransmits = 0u64;
 
     while start.elapsed() < config.duration {
+        // Check for cancellation
+        if cancel_token.is_cancelled() {
+            info!("Test cancelled by user");
+            break;
+        }
+
         match stream.write(&buffer).await {
             Ok(n) => {
                 measurements.record_bytes_sent(stream_id, n as u64);
@@ -1033,6 +1160,13 @@ async fn send_data(
                     } else {
                         Duration::ZERO
                     };
+
+                    // Get TCP stats for retransmits
+                    let tcp_stats = get_tcp_stats(stream).ok();
+                    let current_retransmits =
+                        tcp_stats.as_ref().map(|s| s.retransmits).unwrap_or(0);
+                    let interval_retransmits = current_retransmits.saturating_sub(last_retransmits);
+                    last_retransmits = current_retransmits;
 
                     measurements.add_interval(IntervalStats {
                         start: interval_start,
@@ -1053,17 +1187,47 @@ async fn send_data(
                             jitter_ms: None,
                             lost_packets: None,
                             lost_percent: None,
-                            retransmits: None,
+                            retransmits: if interval_retransmits > 0 {
+                                Some(interval_retransmits)
+                            } else {
+                                None
+                            },
                         });
                     }
 
                     if !config.json {
+                        // Format bytes as GBytes or MBytes
+                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
+                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                        } else {
+                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                        };
+
+                        // Format bitrate as Gbits/sec or Mbits/sec
+                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
+                            (bps / 1_000_000_000.0, "Gbits/sec")
+                        } else {
+                            (bps / 1_000_000.0, "Mbits/sec")
+                        };
+
+                        // Get congestion window in KBytes
+                        let cwnd_kbytes = tcp_stats
+                            .as_ref()
+                            .and_then(|s| s.snd_cwnd)
+                            .map(|cwnd| cwnd / 1024)
+                            .unwrap_or(0);
+
                         println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}   {:4} KBytes",
+                            stream_id,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0
+                            transfer_val,
+                            transfer_unit,
+                            bitrate_val,
+                            bitrate_unit,
+                            interval_retransmits,
+                            cwnd_kbytes
                         );
                     }
 
@@ -1091,13 +1255,21 @@ async fn receive_data(
     config: &Config,
     callback: &Option<CallbackRef>,
     buffer_pool: Arc<BufferPool>,
+    cancel_token: &CancellationToken,
 ) -> Result<()> {
     let mut buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
+    let mut last_retransmits = 0u64;
 
     while start.elapsed() < config.duration {
+        // Check for cancellation
+        if cancel_token.is_cancelled() {
+            info!("Test cancelled by user");
+            break;
+        }
+
         match time::timeout(Duration::from_millis(100), stream.read(&mut buffer)).await {
             Ok(Ok(0)) => {
                 // Connection closed
@@ -1119,6 +1291,13 @@ async fn receive_data(
                         Duration::ZERO
                     };
 
+                    // Get TCP stats for retransmits
+                    let tcp_stats = get_tcp_stats(stream).ok();
+                    let current_retransmits =
+                        tcp_stats.as_ref().map(|s| s.retransmits).unwrap_or(0);
+                    let interval_retransmits = current_retransmits.saturating_sub(last_retransmits);
+                    last_retransmits = current_retransmits;
+
                     measurements.add_interval(IntervalStats {
                         start: interval_start,
                         end: elapsed,
@@ -1138,17 +1317,39 @@ async fn receive_data(
                             jitter_ms: None,
                             lost_packets: None,
                             lost_percent: None,
-                            retransmits: None,
+                            retransmits: if interval_retransmits > 0 {
+                                Some(interval_retransmits)
+                            } else {
+                                None
+                            },
                         });
                     }
 
                     if !config.json {
+                        // Format bytes as GBytes or MBytes
+                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
+                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                        } else {
+                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                        };
+
+                        // Format bitrate as Gbits/sec or Mbits/sec
+                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
+                            (bps / 1_000_000_000.0, "Gbits/sec")
+                        } else {
+                            (bps / 1_000_000.0, "Mbits/sec")
+                        };
+
                         println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}",
+                            stream_id,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0
+                            transfer_val,
+                            transfer_unit,
+                            bitrate_val,
+                            bitrate_unit,
+                            interval_retransmits
                         );
                     }
 
@@ -1174,42 +1375,77 @@ async fn receive_data(
     Ok(())
 }
 
-fn print_results(measurements: &crate::Measurements) {
-    println!("\n- - - - - - - - - - - - - - - - - - - - - - - - -");
-    println!("Test Complete");
-    println!("- - - - - - - - - - - - - - - - - - - - - - - - -");
+fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse: bool) {
+    let is_udp = measurements.total_packets > 0;
 
-    for (i, stream) in measurements.streams.iter().enumerate() {
+    if !is_udp {
+        // TCP formatting
+        println!("- - - - - - - - - - - - - - - - - - - - - - - - -");
+
+        let duration = measurements.total_duration.as_secs_f64();
+
+        // Print header for final summary
+        println!("[ ID] Interval           Transfer     Bitrate         Retr");
+
+        // Print sender summary
+        let sent_bytes = measurements.total_bytes_sent;
+        let (sent_val, sent_unit) = if sent_bytes >= 1_000_000_000 {
+            (sent_bytes as f64 / 1_000_000_000.0, "GBytes")
+        } else {
+            (sent_bytes as f64 / 1_000_000.0, "MBytes")
+        };
+        let sent_bps = (sent_bytes as f64 * 8.0) / duration;
+        let (sent_bitrate_val, sent_bitrate_unit) = if sent_bps >= 1_000_000_000.0 {
+            (sent_bps / 1_000_000_000.0, "Gbits/sec")
+        } else {
+            (sent_bps / 1_000_000.0, "Mbits/sec")
+        };
+
         println!(
-            "Stream {}: {:.2} seconds, {} bytes, {:.2} Mbps",
-            i,
-            stream.duration.as_secs_f64(),
-            stream.bytes_sent + stream.bytes_received,
-            stream.bits_per_second() / 1_000_000.0
+            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}             sender",
+            stream_id,
+            0.0,
+            duration,
+            sent_val,
+            sent_unit,
+            sent_bitrate_val,
+            sent_bitrate_unit,
+            0 // Total retransmits - would need to track cumulative
         );
-    }
 
-    println!("- - - - - - - - - - - - - - - - - - - - - - - - -");
-    println!(
-        "Total: {:.2} seconds, {} bytes sent, {} bytes received",
-        measurements.total_duration.as_secs_f64(),
-        measurements.total_bytes_sent,
-        measurements.total_bytes_received
-    );
-    println!(
-        "Bandwidth: {:.2} Mbps",
-        measurements.total_bits_per_second() / 1_000_000.0
-    );
+        // Print receiver summary if we received data
+        if measurements.total_bytes_received > 0 {
+            let recv_bytes = measurements.total_bytes_received;
+            let (recv_val, recv_unit) = if recv_bytes >= 1_000_000_000 {
+                (recv_bytes as f64 / 1_000_000_000.0, "GBytes")
+            } else {
+                (recv_bytes as f64 / 1_000_000.0, "MBytes")
+            };
+            let recv_bps = (recv_bytes as f64 * 8.0) / duration;
+            let (recv_bitrate_val, recv_bitrate_unit) = if recv_bps >= 1_000_000_000.0 {
+                (recv_bps / 1_000_000_000.0, "Gbits/sec")
+            } else {
+                (recv_bps / 1_000_000.0, "Mbits/sec")
+            };
 
-    // Show UDP statistics if available
-    if measurements.total_packets > 0 {
+            println!(
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}                  receiver",
+                stream_id, 0.0, duration, recv_val, recv_unit, recv_bitrate_val, recv_bitrate_unit
+            );
+        }
+
+        println!();
+    } else {
+        // UDP formatting
+        println!("- - - - - - - - - - - - - - - - - - - - - - - - -");
+
+        let duration = measurements.total_duration.as_secs_f64();
+
         // Calculate loss statistics
         let (lost, expected) = if measurements.total_bytes_received > 0 {
-            // Receiving mode: we can calculate loss from sequence numbers
             let (l, e) = measurements.calculate_udp_loss();
             (l, e)
         } else {
-            // Sending mode: no loss calculation
             (0, measurements.total_packets)
         };
 
@@ -1219,27 +1455,77 @@ fn print_results(measurements: &crate::Measurements) {
             0.0
         };
 
-        if measurements.total_bytes_received > 0 {
-            // Receiving mode: show full statistics
-            println!(
-                "UDP: {} packets received, {} lost ({:.2}%), {:.3} ms jitter",
-                expected, lost, loss_percent, measurements.jitter_ms
-            );
+        // Print header for final summary
+        println!(
+            "[ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams"
+        );
 
-            if measurements.out_of_order_packets > 0 {
-                println!(
-                    "     {} out-of-order packets",
-                    measurements.out_of_order_packets
-                );
-            }
-        } else {
-            // Sending mode - loss/jitter can't be measured
+        // Print sender summary
+        if measurements.total_bytes_sent > 0 {
+            let sent_bytes = measurements.total_bytes_sent;
+            let (sent_val, sent_unit) = if sent_bytes >= 1_000_000_000 {
+                (sent_bytes as f64 / 1_000_000_000.0, "GBytes")
+            } else if sent_bytes >= 1_000_000 {
+                (sent_bytes as f64 / 1_000_000.0, "MBytes")
+            } else {
+                (sent_bytes as f64 / 1_000.0, "KBytes")
+            };
+            let sent_bps = (sent_bytes as f64 * 8.0) / duration;
+            let (sent_bitrate_val, sent_bitrate_unit) = if sent_bps >= 1_000_000_000.0 {
+                (sent_bps / 1_000_000_000.0, "Gbits/sec")
+            } else {
+                (sent_bps / 1_000_000.0, "Mbits/sec")
+            };
+
             println!(
-                "UDP: {} packets sent (loss and jitter measured at receiver)",
-                measurements.total_packets
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}  {:6.3} ms  {}/{} ({:.0}%)  sender",
+                stream_id,
+                0.0,
+                duration,
+                sent_val,
+                sent_unit,
+                sent_bitrate_val,
+                sent_bitrate_unit,
+                0.0, // Jitter can't be measured at sender
+                lost,
+                expected,
+                loss_percent
             );
         }
-    }
 
-    println!("- - - - - - - - - - - - - - - - - - - - - - - - -\n");
+        // Print receiver summary if we received data
+        if measurements.total_bytes_received > 0 {
+            let recv_bytes = measurements.total_bytes_received;
+            let (recv_val, recv_unit) = if recv_bytes >= 1_000_000_000 {
+                (recv_bytes as f64 / 1_000_000_000.0, "GBytes")
+            } else if recv_bytes >= 1_000_000 {
+                (recv_bytes as f64 / 1_000_000.0, "MBytes")
+            } else {
+                (recv_bytes as f64 / 1_000.0, "KBytes")
+            };
+            let recv_bps = (recv_bytes as f64 * 8.0) / duration;
+            let (recv_bitrate_val, recv_bitrate_unit) = if recv_bps >= 1_000_000_000.0 {
+                (recv_bps / 1_000_000_000.0, "Gbits/sec")
+            } else {
+                (recv_bps / 1_000_000.0, "Mbits/sec")
+            };
+
+            println!(
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}  {:6.3} ms  {}/{} ({:.0}%)  receiver",
+                stream_id,
+                0.0,
+                duration,
+                recv_val,
+                recv_unit,
+                recv_bitrate_val,
+                recv_bitrate_unit,
+                measurements.jitter_ms,
+                lost,
+                expected,
+                loss_percent
+            );
+        }
+
+        println!();
+    }
 }
