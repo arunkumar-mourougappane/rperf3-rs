@@ -157,6 +157,7 @@
 //! - **Packet loss detection**: Sub-millisecond precision
 //! - **Jitter measurement**: RFC 3550 compliant algorithm
 
+pub mod buffer_pool;
 pub mod client;
 pub mod config;
 pub mod error;

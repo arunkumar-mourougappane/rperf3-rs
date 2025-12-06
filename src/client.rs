@@ -1,3 +1,4 @@
+use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
 use crate::measurements::{
     get_connection_info, get_system_info, get_tcp_stats, IntervalStats, MeasurementsCollector,
@@ -260,6 +261,8 @@ pub struct Client {
     config: Config,
     measurements: MeasurementsCollector,
     callback: Option<CallbackRef>,
+    tcp_buffer_pool: Arc<BufferPool>,
+    udp_buffer_pool: Arc<BufferPool>,
 }
 
 impl Client {
@@ -288,10 +291,20 @@ impl Client {
             ));
         }
 
+        // Create buffer pools for TCP and UDP
+        // TCP: use configured buffer size, pool up to 10 buffers per stream
+        let tcp_pool_size = config.parallel * 2; // 2 buffers per stream (send + receive)
+        let tcp_buffer_pool = Arc::new(BufferPool::new(config.buffer_size, tcp_pool_size));
+        
+        // UDP: fixed 65536 bytes (max UDP packet size), pool up to 10 buffers
+        let udp_buffer_pool = Arc::new(BufferPool::new(65536, 10));
+
         Ok(Self {
             config,
             measurements: MeasurementsCollector::new(),
             callback: None,
+            tcp_buffer_pool,
+            udp_buffer_pool,
         })
     }
 
@@ -438,6 +451,7 @@ impl Client {
                 &self.measurements,
                 &self.config,
                 &self.callback,
+                self.tcp_buffer_pool.clone(),
             )
             .await?;
         } else {
@@ -448,6 +462,7 @@ impl Client {
                 &self.measurements,
                 &self.config,
                 &self.callback,
+                self.tcp_buffer_pool.clone(),
             )
             .await?;
         }
@@ -786,7 +801,7 @@ impl Client {
         let mut last_interval = start;
         let mut interval_bytes = 0u64;
         let mut interval_packets = 0u64;
-        let mut buffer = vec![0u8; 65536]; // Max UDP packet size
+        let mut buffer = self.udp_buffer_pool.get();
 
         while start.elapsed() < self.config.duration {
             // Set a timeout for recv to check duration periodically
@@ -993,8 +1008,9 @@ async fn send_data(
     measurements: &MeasurementsCollector,
     config: &Config,
     callback: &Option<CallbackRef>,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    let buffer = vec![0u8; config.buffer_size];
+    let buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
@@ -1073,8 +1089,9 @@ async fn receive_data(
     measurements: &MeasurementsCollector,
     config: &Config,
     callback: &Option<CallbackRef>,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    let mut buffer = vec![0u8; config.buffer_size];
+    let mut buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
