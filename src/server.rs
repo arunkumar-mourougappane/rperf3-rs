@@ -86,7 +86,7 @@ impl Server {
         // TCP: use configured buffer size, pool up to 10 buffers per stream
         let tcp_pool_size = config.parallel * 2; // 2 buffers per stream (send + receive)
         let tcp_buffer_pool = Arc::new(BufferPool::new(config.buffer_size, tcp_pool_size));
-        
+
         // UDP: fixed 65536 bytes (max UDP packet size), pool up to 10 buffers
         let udp_buffer_pool = Arc::new(BufferPool::new(65536, 10));
 
