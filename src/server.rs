@@ -310,7 +310,7 @@ async fn handle_tcp_client(
     // Read setup message
     let setup_msg = deserialize_message(&mut stream).await?;
 
-    let (protocol, duration, reverse, _parallel, bandwidth, _buffer_size) = match setup_msg {
+    let (protocol, duration, reverse, _parallel, bandwidth, buffer_size) = match setup_msg {
         Message::Setup {
             version: _,
             protocol,
@@ -341,8 +341,15 @@ async fn handle_tcp_client(
 
     // Check if this is UDP mode
     if protocol == "Udp" {
+        // Create a config with the client's test parameters
+        let mut udp_config = config.clone();
+        udp_config.duration = duration;
+        udp_config.reverse = reverse;
+        udp_config.bandwidth = bandwidth;
+        udp_config.buffer_size = buffer_size;
+        
         // Handle UDP test via control channel
-        return handle_udp_test(stream, addr, config, measurements, udp_buffer_pool).await;
+        return handle_udp_test(stream, addr, udp_config, measurements, udp_buffer_pool).await;
     }
 
     // Send setup acknowledgment for TCP
