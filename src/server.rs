@@ -296,10 +296,10 @@ impl Server {
                             } else {
                                 (interval_bytes as f64 / 1_000.0, "KBytes")
                             };
-                            
+
                             // Format bitrate as Mbits/sec
                             let bitrate_val = bps / 1_000_000.0;
-                            
+
                             println!(
                                 "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
                                 5, // stream_id
@@ -795,20 +795,21 @@ async fn send_data(
                         } else {
                             (interval_bytes as f64 / 1_000_000.0, "MBytes")
                         };
-                        
+
                         // Format bitrate as Gbits/sec or Mbits/sec
                         let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
                             (bps / 1_000_000_000.0, "Gbits/sec")
                         } else {
                             (bps / 1_000_000.0, "Mbits/sec")
                         };
-                        
+
                         // Get congestion window in KBytes
-                        let cwnd_kbytes = tcp_stats.as_ref()
+                        let cwnd_kbytes = tcp_stats
+                            .as_ref()
                             .and_then(|s| s.snd_cwnd)
                             .map(|cwnd| cwnd / 1024)
                             .unwrap_or(0);
-                        
+
                         println!(
                             "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}   {:4} KBytes",
                             5, // stream_id
@@ -898,14 +899,14 @@ async fn receive_data(
                         } else {
                             (interval_bytes as f64 / 1_000_000.0, "MBytes")
                         };
-                        
+
                         // Format bitrate as Gbits/sec or Mbits/sec
                         let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
                             (bps / 1_000_000_000.0, "Gbits/sec")
                         } else {
                             (bps / 1_000_000.0, "Mbits/sec")
                         };
-                        
+
                         println!(
                             "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
                             5, // stream_id
