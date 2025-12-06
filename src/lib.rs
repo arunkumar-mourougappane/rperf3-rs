@@ -13,7 +13,8 @@
 //! - **Bidirectional Testing**: Normal mode (client → server) and reverse mode (server → client)
 //! - **Bandwidth Limiting**: Control send rate for both TCP and UDP with K/M/G notation (e.g., 100M = 100 Mbps)
 //! - **UDP Metrics**: Packet loss percentage, jitter (RFC 3550), and out-of-order packet detection
-//! - **TCP Statistics**: Retransmits, RTT, congestion window, and PMTU (Linux only)
+//! - **TCP Statistics**: Retransmits, congestion window (cwnd), and real-time interval reporting (Linux only)
+//! - **Interval Reporting**: Configurable interval updates with iperf3-style formatted output (default: 1 second)
 //! - **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
 //! - **Parallel Streams**: Multiple concurrent connections for aggregate testing
 //! - **JSON Output**: Machine-readable output compatible with automation systems
@@ -33,7 +34,8 @@
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let config = Config::client("192.168.1.100".to_string(), 5201)
 //!         .with_protocol(Protocol::Tcp)
-//!         .with_duration(Duration::from_secs(10));
+//!         .with_duration(Duration::from_secs(10))
+//!         .with_interval(Duration::from_secs(1)); // Report every second
 //!
 //!     let client = Client::new(config)?;
 //!     client.run().await?;
@@ -136,6 +138,35 @@
 //! - `1G` = 1,000,000,000 bits/second
 //!
 //! The bandwidth limiting applies to both TCP (in reverse mode) and UDP tests.
+//!
+//! ## Interval Reporting
+//!
+//! Real-time interval reports show throughput statistics at regular intervals (default: 1 second).
+//! Reports use iperf3-compatible formatting with proper alignment:
+//!
+//! ```text
+//! [ ID] Interval           Transfer        Bitrate            Retr  Cwnd
+//! [  5]   0.00-1.00  sec    7.23  GBytes    58.1  Gbits/sec     0
+//! [  5]   1.00-2.00  sec    7.42  GBytes    59.4  Gbits/sec     0   1215 KBytes
+//! ```
+//!
+//! Configure intervals with the `-i` flag or `.with_interval()` method:
+//!
+//! ```no_run
+//! use rperf3::{Client, Config};
+//! use std::time::Duration;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = Config::client("192.168.1.100".to_string(), 5201)
+//!     .with_duration(Duration::from_secs(10))
+//!     .with_interval(Duration::from_secs(2)); // Report every 2 seconds
+//!
+//! let client = Client::new(config)?;
+//! client.run().await?;
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! ## Architecture
 //!
