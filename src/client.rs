@@ -608,58 +608,11 @@ impl Client {
         info!("UDP client connected to {}", server_addr);
 
         let result = if self.config.reverse {
-            // Reverse mode: Send initialization packet to let server know our UDP port
-            // Implement retry mechanism with acknowledgment waiting
-            let mut handshake_complete = false;
+            // Reverse mode: Send one initialization packet to let server know our UDP port
+            let init_packet = crate::udp_packet::create_packet(0, 0);
+            socket.send(&init_packet).await?;
             
-            for attempt in 0..3 {
-                // Use a special sequence number that won't interfere with the actual test
-                let init_packet = crate::udp_packet::create_packet(u64::MAX, 0);
-                socket.send(&init_packet).await?;
-                
-                info!("Sent UDP initialization packet (attempt {})", attempt + 1);
-                
-                // Wait for acknowledgment from server with timeout
-                let mut ack_buf = vec![0u8; 64];
-                match tokio::time::timeout(
-                    Duration::from_millis(500),
-                    socket.recv(&mut ack_buf)
-                ).await {
-                    Ok(Ok(n)) if n > 0 => {
-                        info!("Received acknowledgment from server ({} bytes), starting test", n);
-                        handshake_complete = true;
-                        break;
-                    }
-                    Ok(Ok(_)) => {
-                        debug!("Received empty packet, retrying...");
-                    }
-                    Ok(Err(e)) => {
-                        error!("Error receiving acknowledgment: {}", e);
-                        if attempt == 2 {
-                            return Err(Error::Protocol(
-                                format!("Failed to receive server acknowledgment: {}", e)
-                            ));
-                        }
-                    }
-                    Err(_) => {
-                        if attempt < 2 {
-                            debug!("No acknowledgment received, retrying...");
-                        } else {
-                            return Err(Error::Protocol(
-                                "Server did not acknowledge UDP connection after 3 attempts. \
-                                 Ensure the server is running and reachable.".to_string()
-                            ));
-                        }
-                    }
-                }
-            }
-            
-            if !handshake_complete {
-                return Err(Error::Protocol(
-                    "UDP reverse mode handshake failed".to_string()
-                ));
-            }
-            
+            // Receive data from server
             self.run_udp_receive(socket).await
         } else {
             // Normal mode: send data to server
