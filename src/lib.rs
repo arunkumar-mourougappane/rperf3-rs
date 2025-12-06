@@ -201,6 +201,7 @@ pub use client::{Client, ProgressCallback, ProgressEvent};
 pub use config::{Config, Protocol};
 pub use error::{Error, Result};
 pub use measurements::Measurements;
+pub use protocol::{stream_id_for_index, DEFAULT_STREAM_ID};
 pub use server::Server;
 
 /// Library version string.

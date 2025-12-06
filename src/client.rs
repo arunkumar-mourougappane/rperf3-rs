@@ -4,7 +4,7 @@ use crate::measurements::{
     get_connection_info, get_system_info, get_tcp_stats, IntervalStats, MeasurementsCollector,
     TestConfig,
 };
-use crate::protocol::{deserialize_message, serialize_message, Message};
+use crate::protocol::{deserialize_message, serialize_message, Message, DEFAULT_STREAM_ID};
 use crate::{Error, Result};
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -309,7 +309,7 @@ impl Client {
             tcp_buffer_pool,
             udp_buffer_pool,
             cancellation_token: CancellationToken::new(),
-            stream_id: 5, // Use stream ID 5 like iperf3
+            stream_id: DEFAULT_STREAM_ID, // Use default stream ID matching iperf3
         })
     }
 
