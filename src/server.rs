@@ -1,9 +1,11 @@
+use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
 use crate::measurements::{IntervalStats, MeasurementsCollector};
 use crate::protocol::{deserialize_message, serialize_message, Message};
 use crate::{Error, Result};
 use log::{debug, error, info};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
@@ -60,6 +62,8 @@ use tokio::time;
 pub struct Server {
     config: Config,
     measurements: MeasurementsCollector,
+    tcp_buffer_pool: Arc<BufferPool>,
+    udp_buffer_pool: Arc<BufferPool>,
 }
 
 impl Server {
@@ -78,9 +82,19 @@ impl Server {
     /// let server = Server::new(config);
     /// ```
     pub fn new(config: Config) -> Self {
+        // Create buffer pools for TCP and UDP
+        // TCP: use configured buffer size, pool up to 10 buffers per stream
+        let tcp_pool_size = config.parallel * 2; // 2 buffers per stream (send + receive)
+        let tcp_buffer_pool = Arc::new(BufferPool::new(config.buffer_size, tcp_pool_size));
+        
+        // UDP: fixed 65536 bytes (max UDP packet size), pool up to 10 buffers
+        let udp_buffer_pool = Arc::new(BufferPool::new(65536, 10));
+
         Self {
             config,
             measurements: MeasurementsCollector::new(),
+            tcp_buffer_pool,
+            udp_buffer_pool,
         }
     }
 
@@ -139,9 +153,19 @@ impl Server {
                     info!("New connection from {}", addr);
                     let config = self.config.clone();
                     let measurements = self.measurements.clone();
+                    let tcp_buffer_pool = self.tcp_buffer_pool.clone();
+                    let udp_buffer_pool = self.udp_buffer_pool.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = handle_tcp_client(stream, addr, config, measurements).await
+                        if let Err(e) = handle_tcp_client(
+                            stream,
+                            addr,
+                            config,
+                            measurements,
+                            tcp_buffer_pool,
+                            udp_buffer_pool,
+                        )
+                        .await
                         {
                             error!("Error handling client {}: {}", addr, e);
                         }
@@ -158,7 +182,7 @@ impl Server {
         let socket = UdpSocket::bind(bind_addr).await?;
         info!("UDP server listening on {}", bind_addr);
 
-        let mut buf = vec![0u8; 65536];
+        let mut buf = self.udp_buffer_pool.get();
         let start = Instant::now();
         let mut last_interval = start;
         let mut interval_bytes = 0u64;
@@ -280,6 +304,8 @@ async fn handle_tcp_client(
     addr: SocketAddr,
     config: Config,
     measurements: MeasurementsCollector,
+    tcp_buffer_pool: Arc<BufferPool>,
+    udp_buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
     // Read setup message
     let setup_msg = deserialize_message(&mut stream).await?;
@@ -316,7 +342,7 @@ async fn handle_tcp_client(
     // Check if this is UDP mode
     if protocol == "Udp" {
         // Handle UDP test via control channel
-        return handle_udp_test(stream, addr, config, measurements).await;
+        return handle_udp_test(stream, addr, config, measurements, udp_buffer_pool).await;
     }
 
     // Send setup acknowledgment for TCP
@@ -340,10 +366,27 @@ async fn handle_tcp_client(
 
     if reverse {
         // Server sends data to client
-        send_data(&mut stream, 0, duration, bandwidth, &measurements, &config).await?;
+        send_data(
+            &mut stream,
+            0,
+            duration,
+            bandwidth,
+            &measurements,
+            &config,
+            tcp_buffer_pool.clone(),
+        )
+        .await?;
     } else {
         // Server receives data from client
-        receive_data(&mut stream, 0, duration, &measurements, &config).await?;
+        receive_data(
+            &mut stream,
+            0,
+            duration,
+            &measurements,
+            &config,
+            tcp_buffer_pool.clone(),
+        )
+        .await?;
     }
 
     // Send final results
@@ -382,6 +425,7 @@ async fn handle_udp_test(
     client_addr: SocketAddr,
     config: Config,
     measurements: MeasurementsCollector,
+    udp_buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
     let duration = config.duration;
     let reverse = config.reverse;
@@ -415,11 +459,12 @@ async fn handle_udp_test(
             buffer_size,
             &measurements,
             &config,
+            udp_buffer_pool.clone(),
         )
         .await?;
     } else {
         // Server receives UDP data from client
-        receive_udp_data(duration, &measurements, &config).await?;
+        receive_udp_data(duration, &measurements, &config, udp_buffer_pool.clone()).await?;
     }
 
     info!(
@@ -438,6 +483,7 @@ async fn send_udp_data(
     buffer_size: usize,
     measurements: &MeasurementsCollector,
     config: &Config,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
     // Bind to the server's configured port for UDP
     let bind_addr = format!("0.0.0.0:{}", config.port);
@@ -446,7 +492,7 @@ async fn send_udp_data(
     info!("UDP server waiting for client on port {}", config.port);
 
     // Wait for first packet from client to discover their UDP port
-    let mut buf = vec![0u8; 65536];
+    let mut buf = buffer_pool.get();
     let (_, client_udp_addr) = socket.recv_from(&mut buf).await?;
 
     info!("UDP client address discovered: {}", client_udp_addr);
@@ -555,6 +601,7 @@ async fn receive_udp_data(
     duration: Duration,
     measurements: &MeasurementsCollector,
     config: &Config,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
     // Bind UDP socket on the server port
     let bind_addr = format!("0.0.0.0:{}", config.port);
@@ -563,7 +610,7 @@ async fn receive_udp_data(
     info!("UDP server listening for packets on port {}", config.port);
 
     let start = Instant::now();
-    let mut buf = vec![0u8; 65536];
+    let mut buf = buffer_pool.get();
 
     // Receive packets until duration expires or timeout
     while start.elapsed() < duration {
@@ -610,8 +657,9 @@ async fn send_data(
     bandwidth: Option<u64>,
     measurements: &MeasurementsCollector,
     config: &Config,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    let buffer = vec![0u8; config.buffer_size];
+    let buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
@@ -692,8 +740,9 @@ async fn receive_data(
     duration: Duration,
     measurements: &MeasurementsCollector,
     config: &Config,
+    buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    let mut buffer = vec![0u8; config.buffer_size];
+    let mut buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
     let mut interval_bytes = 0u64;
