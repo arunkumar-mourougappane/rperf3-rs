@@ -139,7 +139,12 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Disable logs in release builds, enable info level in debug builds
+    #[cfg(debug_assertions)]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    #[cfg(not(debug_assertions))]
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
 
     let cli = Cli::parse();
 

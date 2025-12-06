@@ -1357,9 +1357,12 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
     };
 
     if result == 0 {
+        // Convert snd_cwnd from segments to bytes by multiplying by MSS
+        let snd_cwnd_bytes = (info.snd_cwnd as u64) * (info.snd_mss as u64);
+
         Ok(TcpStats {
             retransmits: info.total_retrans as u64,
-            snd_cwnd: Some(info.snd_cwnd as u64),
+            snd_cwnd: Some(snd_cwnd_bytes),
             rtt: Some(info.rtt as u64),
             rttvar: Some(info.rttvar as u64),
             pmtu: Some(info.pmtu as u64),
