@@ -492,13 +492,26 @@ async fn send_udp_data(
     info!("UDP server waiting for client on port {}", config.port);
 
     // Wait for first packet from client to discover their UDP port
+    // Use a timeout to avoid hanging indefinitely
     let mut buf = buffer_pool.get();
-    let (_, client_udp_addr) = socket.recv_from(&mut buf).await?;
+    let (n, client_udp_addr) = tokio::time::timeout(
+        Duration::from_secs(30),
+        socket.recv_from(&mut buf)
+    ).await
+        .map_err(|_| Error::Protocol("Timeout waiting for client initialization packet".to_string()))??;
 
-    info!("UDP client address discovered: {}", client_udp_addr);
+    info!("UDP client address discovered: {} ({} bytes received)", client_udp_addr, n);
 
     // Now connect to client's UDP address
     socket.connect(client_udp_addr).await?;
+
+    // Send acknowledgment packet to client to confirm we're ready
+    let ack_packet = crate::udp_packet::create_packet(u64::MAX - 1, 0);
+    socket.send(&ack_packet).await?;
+    info!("Sent acknowledgment to client at {}", client_udp_addr);
+    
+    // Small delay to ensure client receives the ack before we start sending data
+    tokio::time::sleep(Duration::from_millis(10)).await;
 
     let start = Instant::now();
     let mut last_interval = start;
