@@ -526,7 +526,7 @@ async fn send_udp_data(
     let mut last_bandwidth_check = start;
 
     while start.elapsed() < duration {
-        let packet = crate::udp_packet::create_packet(sequence, payload_size);
+        let packet = crate::udp_packet::create_packet_fast(sequence, payload_size);
 
         match socket.send(&packet).await {
             Ok(n) => {
