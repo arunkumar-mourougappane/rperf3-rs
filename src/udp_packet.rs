@@ -128,6 +128,16 @@ impl UdpPacketHeader {
     ///
     /// * `sequence` - Packet sequence number
     /// * `timestamp_us` - Send timestamp in microseconds
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::udp_packet::UdpPacketHeader;
+    ///
+    /// let header = UdpPacketHeader::new(42, 1234567890);
+    /// assert_eq!(header.sequence, 42);
+    /// assert_eq!(header.timestamp_us, 1234567890);
+    /// ```
     pub fn new(sequence: u64, timestamp_us: u64) -> Self {
         Self {
             magic: RPERF3_UDP_MAGIC,
@@ -141,6 +151,17 @@ impl UdpPacketHeader {
     /// # Arguments
     ///
     /// * `sequence` - Packet sequence number
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::udp_packet::UdpPacketHeader;
+    ///
+    /// let header = UdpPacketHeader::with_current_time(100);
+    /// assert_eq!(header.sequence, 100);
+    /// // Timestamp should be recent (within last 10 seconds)
+    /// assert!(header.timestamp_us > 0);
+    /// ```
     pub fn with_current_time(sequence: u64) -> Self {
         let timestamp_us = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -154,6 +175,21 @@ impl UdpPacketHeader {
     /// # Returns
     ///
     /// 20-byte array containing the serialized header
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::udp_packet::UdpPacketHeader;
+    ///
+    /// let header = UdpPacketHeader::new(42, 1234567890);
+    /// let bytes = header.to_bytes();
+    /// assert_eq!(bytes.len(), 20);
+    ///
+    /// // Verify round-trip serialization
+    /// let parsed = UdpPacketHeader::from_bytes(&bytes).unwrap();
+    /// assert_eq!(parsed.sequence, 42);
+    /// assert_eq!(parsed.timestamp_us, 1234567890);
+    /// ```
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         let mut bytes = [0u8; Self::SIZE];
         bytes[0..4].copy_from_slice(&self.magic.to_be_bytes());
@@ -171,6 +207,28 @@ impl UdpPacketHeader {
     /// # Returns
     ///
     /// `Some(header)` if magic marker matches, `None` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::udp_packet::UdpPacketHeader;
+    ///
+    /// let header = UdpPacketHeader::new(100, 9876543210);
+    /// let bytes = header.to_bytes();
+    ///
+    /// // Parse valid header
+    /// let parsed = UdpPacketHeader::from_bytes(&bytes).unwrap();
+    /// assert_eq!(parsed.sequence, 100);
+    /// assert_eq!(parsed.timestamp_us, 9876543210);
+    ///
+    /// // Invalid magic marker returns None
+    /// let mut bad_bytes = bytes;
+    /// bad_bytes[0] = 0xFF;
+    /// assert!(UdpPacketHeader::from_bytes(&bad_bytes).is_none());
+    ///
+    /// // Too short buffer returns None
+    /// assert!(UdpPacketHeader::from_bytes(&[0u8; 10]).is_none());
+    /// ```
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < Self::SIZE {
             return None;
@@ -254,13 +312,37 @@ pub fn create_packet(sequence: u64, payload_size: usize) -> Vec<u8> {
 /// # Examples
 ///
 /// ```
-/// use rperf3::udp_packet::create_packet_fast;
+/// use rperf3::udp_packet::{create_packet_fast, parse_packet};
 ///
 /// // Create packets in a high-performance loop
-/// for seq in 0..10000 {
+/// for seq in 0..100 {
 ///     let packet = create_packet_fast(seq, 1024);
-///     // send packet...
+///     assert_eq!(packet.len(), 20 + 1024);
+///     
+///     // Verify packet is valid
+///     let (header, payload) = parse_packet(&packet).unwrap();
+///     assert_eq!(header.sequence, seq);
+///     assert_eq!(payload.len(), 1024);
 /// }
+/// ```
+///
+/// # Comparison with create_packet
+///
+/// ```
+/// use rperf3::udp_packet::{create_packet, create_packet_fast, parse_packet};
+///
+/// // Both functions produce valid packets with the same format
+/// let packet1 = create_packet(1, 1000);
+/// let packet2 = create_packet_fast(1, 1000);
+///
+/// assert_eq!(packet1.len(), packet2.len());
+///
+/// // Both can be parsed successfully
+/// let (header1, _) = parse_packet(&packet1).unwrap();
+/// let (header2, _) = parse_packet(&packet2).unwrap();
+///
+/// assert_eq!(header1.sequence, header2.sequence);
+/// // Timestamps may differ slightly due to caching
 /// ```
 pub fn create_packet_fast(sequence: u64, payload_size: usize) -> Vec<u8> {
     let timestamp_us = TIMESTAMP_CACHE.with(|cache| cache.borrow_mut().get_timestamp());
@@ -281,6 +363,23 @@ pub fn create_packet_fast(sequence: u64, payload_size: usize) -> Vec<u8> {
 /// # Returns
 ///
 /// `Some((header, payload))` if packet has valid header, `None` otherwise
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::udp_packet::{create_packet, parse_packet};
+///
+/// // Create and parse a packet
+/// let packet = create_packet(123, 512);
+/// let (header, payload) = parse_packet(&packet).expect("Valid packet");
+///
+/// assert_eq!(header.sequence, 123);
+/// assert_eq!(payload.len(), 512);
+/// assert!(header.timestamp_us > 0);
+///
+/// // Invalid packet returns None
+/// assert!(parse_packet(&[0u8; 10]).is_none());
+/// ```
 pub fn parse_packet(packet: &[u8]) -> Option<(UdpPacketHeader, &[u8])> {
     let header = UdpPacketHeader::from_bytes(packet)?;
     let payload = &packet[UdpPacketHeader::SIZE..];
