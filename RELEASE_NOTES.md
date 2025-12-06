@@ -1,8 +1,10 @@
-# Release Notes - Version 0.5.0
+# Release Notes
+
+## Version 0.5.0
 
 **Release Date:** December 6, 2025
 
-## Overview
+### Overview
 
 Version 0.5.0 is a performance-focused release that delivers significant throughput improvements through two major optimizations: atomic counters for lock-free measurement recording and UDP packet timestamp caching. This release achieves 15-30% performance gains at high throughput (>10 Gbps) and 20-30% UDP improvements by eliminating mutex contention and reducing expensive system calls. Additionally, comprehensive documentation enhancements with 6 new doc-tests improve code quality and developer experience.
 
@@ -281,11 +283,11 @@ Special thanks to the Rust community for performance optimization guidance and t
 
 ---
 
-# Release Notes - Version 0.4.0
+## Version 0.4.0
 
 **Release Date:** December 4, 2025
 
-## Overview
+### Overview
 
 Version 0.4.0 is a major feature release that implements full bidirectional UDP support with reverse mode, adds TCP bandwidth limiting, fixes critical UDP bugs, resolves all clippy warnings, and significantly enhances project documentation. This release transforms rperf3-rs into a production-ready network testing tool with comprehensive UDP capabilities and improved developer experience.
 
@@ -677,7 +679,7 @@ assert!(!measurements.intervals.is_empty());  // ✅ Idiomatic
 
 ### UDP Reverse Mode Flow
 
-```
+```text
 ┌────────┐                           ┌────────┐
 │ Client │                           │ Server │
 └────┬───┘                           └───┬────┘
@@ -700,7 +702,7 @@ assert!(!measurements.intervals.is_empty());  // ✅ Idiomatic
 
 ### UDP Normal Mode Flow
 
-```
+```text
 ┌────────┐                           ┌────────┐
 │ Client │                           │ Server │
 └────┬───┘                           └───┬────┘
@@ -957,11 +959,11 @@ Thanks to:
 
 ---
 
-# Release Notes - Version 0.3.9
+## Version 0.3.9
 
 **Release Date:** December 3, 2025
 
-## Overview
+### Overview
 
 Version 0.3.9 is a major documentation release that adds comprehensive Rust API documentation for all public-facing interfaces and implements automated documentation testing in CI/CD. This release significantly improves the developer experience by providing detailed examples, clear parameter descriptions, and platform-specific guidance for using rperf3-rs as a library.
 
@@ -1190,7 +1192,9 @@ doctest:
 - `error.rs`: 55 lines (Error enum and Result alias)
 - `measurements.rs`: 180 lines (Measurements + helper functions)
 
-**Total: 967 lines of documentation**
+#### Documentation Statistics
+
+Total: 967 lines of documentation
 
 ### Example Coverage
 
@@ -1403,11 +1407,11 @@ Thanks to the Rust community for:
 
 ---
 
-# Release Notes - Version 0.3.8
+## Version 0.3.8
 
 **Release Date:** December 2, 2025
 
-## Overview
+### Overview
 
 Version 0.3.8 adds the necessary metadata for publishing rperf3-rs to crates.io and enhances the project documentation. This release resolves the publishing error encountered when attempting to publish v0.3.7, which failed due to missing required package metadata fields.
 
@@ -1477,7 +1481,7 @@ tokio = { version = "1", features = ["full"] }
 
 Attempting to publish v0.3.7 failed with:
 
-```
+```text
 error: failed to publish rperf3-rs v0.3.7 to registry at https://crates.io
 
 Caused by:
@@ -1657,11 +1661,11 @@ Dual-licensed under MIT OR Apache-2.0.
 
 ---
 
-# Release Notes - Version 0.3.7
+## Version 0.3.7
 
 **Release Date:** December 2, 2025
 
-## Overview
+### Overview
 
 Version 0.3.7 fixes Windows build failures by correcting the cross-rs usage to Linux-only targets. This release resolves the issue where cross-rs was incorrectly applied to Windows targets (i686 and ARM64), which it doesn't support. All Windows builds now use the native MSVC toolchain, completing the build infrastructure improvements.
 
@@ -1905,7 +1909,7 @@ With complete and reliable platform coverage, v0.3.8 may include:
 
 - **Documentation**: [README.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/main/README.md)
 - **Build Issues**: [GitHub Issues](https://github.com/arunkumar-mourougappane/rperf3-rs/issues)
-- **cross-rs Info**: https://github.com/cross-rs/cross
+- **cross-rs Info**: <https://github.com/cross-rs/cross>
 - **Discussions**: [GitHub Discussions](https://github.com/arunkumar-mourougappane/rperf3-rs/discussions)
 
 ## Contributors
