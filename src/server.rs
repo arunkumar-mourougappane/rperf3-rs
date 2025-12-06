@@ -289,26 +289,26 @@ impl Server {
                             packets: Some(interval_packets),
                         });
 
-                        // Calculate current loss statistics
-                        let (lost, expected) = self.measurements.calculate_udp_loss();
-                        let loss_percent = if expected > 0 {
-                            (lost as f64 / expected as f64) * 100.0
-                        } else {
-                            0.0
-                        };
-
-                        let measurements = self.measurements.get();
-
                         if !self.config.json {
+                            // Format bytes as KBytes or MBytes
+                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
+                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                            } else {
+                                (interval_bytes as f64 / 1_000.0, "KBytes")
+                            };
+                            
+                            // Format bitrate as Mbits/sec
+                            let bitrate_val = bps / 1_000_000.0;
+                            
                             println!(
-                                "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets, {:.2}% loss, {:.3} ms jitter)",
+                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
+                                5, // stream_id
                                 interval_start.as_secs_f64(),
                                 elapsed.as_secs_f64(),
-                                interval_bytes,
-                                bps / 1_000_000.0,
-                                interval_packets,
-                                loss_percent,
-                                measurements.jitter_ms
+                                transfer_val,
+                                transfer_unit,
+                                bitrate_val,
+                                interval_packets
                             );
                         }
 
@@ -788,14 +788,38 @@ async fn send_data(
                         packets: None,
                     });
 
-                    if !config.json && interval_retransmits > 0 {
+                    if !config.json {
+                        // Format bytes as GBytes or MBytes
+                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
+                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                        } else {
+                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                        };
+                        
+                        // Format bitrate as Gbits/sec or Mbits/sec
+                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
+                            (bps / 1_000_000_000.0, "Gbits/sec")
+                        } else {
+                            (bps / 1_000_000.0, "Mbits/sec")
+                        };
+                        
+                        // Get congestion window in KBytes
+                        let cwnd_kbytes = tcp_stats.as_ref()
+                            .and_then(|s| s.snd_cwnd)
+                            .map(|cwnd| cwnd / 1024)
+                            .unwrap_or(0);
+                        
                         println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} retransmits)",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}   {:4} KBytes",
+                            5, // stream_id
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0,
-                            interval_retransmits
+                            transfer_val,
+                            transfer_unit,
+                            bitrate_val,
+                            bitrate_unit,
+                            interval_retransmits,
+                            cwnd_kbytes
                         );
                     }
 
@@ -867,13 +891,30 @@ async fn receive_data(
                         packets: None,
                     });
 
-                    if !config.json && interval_retransmits > 0 {
+                    if !config.json {
+                        // Format bytes as GBytes or MBytes
+                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
+                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                        } else {
+                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                        };
+                        
+                        // Format bitrate as Gbits/sec or Mbits/sec
+                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
+                            (bps / 1_000_000_000.0, "Gbits/sec")
+                        } else {
+                            (bps / 1_000_000.0, "Mbits/sec")
+                        };
+                        
                         println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} retransmits)",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
+                            5, // stream_id
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0,
+                            transfer_val,
+                            transfer_unit,
+                            bitrate_val,
+                            bitrate_unit,
                             interval_retransmits
                         );
                     }
