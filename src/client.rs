@@ -611,7 +611,7 @@ impl Client {
             // Reverse mode: Send one initialization packet to let server know our UDP port
             let init_packet = crate::udp_packet::create_packet(0, 0);
             socket.send(&init_packet).await?;
-            
+
             // Receive data from server
             self.run_udp_receive(socket).await
         } else {

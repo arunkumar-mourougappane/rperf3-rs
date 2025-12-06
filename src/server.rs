@@ -347,7 +347,7 @@ async fn handle_tcp_client(
         udp_config.reverse = reverse;
         udp_config.bandwidth = bandwidth;
         udp_config.buffer_size = buffer_size;
-        
+
         // Handle UDP test via control channel
         return handle_udp_test(stream, addr, udp_config, measurements, udp_buffer_pool).await;
     }
