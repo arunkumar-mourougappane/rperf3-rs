@@ -70,8 +70,28 @@ mod tests {
 
 #[derive(Parser)]
 #[command(name = "rperf3")]
-#[command(about = "A Rust implementation of iperf3 - network performance testing tool", long_about = None)]
-#[command(version)]
+#[command(author, version, about = "Network performance measurement tool", long_about = None)]
+#[command(after_help = "EXAMPLES:
+    Start server:
+        rperf3 server
+        rperf3 server --port 5201 --bind 192.168.1.100
+
+    Run TCP test:
+        rperf3 client 192.168.1.100
+        rperf3 client 192.168.1.100 --time 30 --interval 2
+
+    Run UDP test with bandwidth limit:
+        rperf3 client 192.168.1.100 --udp --bandwidth 100M
+        rperf3 client 192.168.1.100 -u -b 1G -t 60
+
+    Reverse mode (server sends):
+        rperf3 client 192.168.1.100 --reverse
+        rperf3 client 192.168.1.100 -R -b 500M
+
+BANDWIDTH NOTATION:
+    K = Kilobits (1,000 bits/sec)     Example: 500K = 500 Kbps
+    M = Megabits (1,000,000 bits/sec) Example: 100M = 100 Mbps
+    G = Gigabits (1,000,000,000 bits) Example: 1G = 1 Gbps")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -79,60 +99,64 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run in server mode
+    /// Start server mode and listen for client connections
+    #[command(visible_alias = "s")]
     Server {
-        /// Port to listen on
+        /// Port number to listen on [default: 5201]
         #[arg(short, long, default_value = "5201")]
         port: u16,
 
-        /// Bind to specific address
-        #[arg(short, long)]
+        /// Bind to a specific IP address (default: 0.0.0.0, all interfaces)
+        #[arg(short, long, value_name = "ADDRESS")]
         bind: Option<String>,
 
-        /// Use UDP instead of TCP
+        /// Use UDP protocol instead of TCP
         #[arg(short, long)]
         udp: bool,
     },
 
-    /// Run in client mode
+    /// Start client mode and connect to a server
+    #[command(visible_alias = "c")]
     Client {
-        /// Server address to connect to
+        /// Server hostname or IP address to connect to
+        #[arg(value_name = "SERVER")]
         server: String,
 
-        /// Port to connect to
+        /// Server port number to connect to [default: 5201]
         #[arg(short, long, default_value = "5201")]
         port: u16,
 
-        /// Use UDP instead of TCP
+        /// Use UDP protocol instead of TCP
         #[arg(short, long)]
         udp: bool,
 
-        /// Test duration in seconds
-        #[arg(short = 't', long, default_value = "10")]
+        /// Duration of test in seconds [default: 10]
+        #[arg(short = 't', long, value_name = "SECONDS", default_value = "10")]
         time: u64,
 
-        /// Target bandwidth (for UDP). Supports K/M/G suffix (e.g., 100M, 1G, 500K)
-        #[arg(short, long)]
+        /// Target bandwidth for UDP tests (e.g., 100M, 1G, 500K)
+        /// Applies to UDP and TCP reverse mode. Use K/M/G suffix for units.
+        #[arg(short, long, value_name = "BANDWIDTH")]
         bandwidth: Option<String>,
 
-        /// Buffer size in bytes
-        #[arg(short = 'l', long, default_value = "131072")]
+        /// Buffer/packet size in bytes [default: 128K for TCP, 1500 for UDP]
+        #[arg(short = 'l', long, value_name = "BYTES", default_value = "131072")]
         length: usize,
 
-        /// Number of parallel streams
-        #[arg(short = 'P', long, default_value = "1")]
+        /// Number of parallel streams to use [default: 1]
+        #[arg(short = 'P', long, value_name = "NUM", default_value = "1")]
         parallel: usize,
 
         /// Run in reverse mode (server sends, client receives)
         #[arg(short = 'R', long)]
         reverse: bool,
 
-        /// Output in JSON format
+        /// Output results in JSON format for machine parsing
         #[arg(short = 'J', long)]
         json: bool,
 
-        /// Interval for periodic reports in seconds
-        #[arg(short, long, default_value = "1")]
+        /// Interval between periodic reports in seconds [default: 1]
+        #[arg(short, long, value_name = "SECONDS", default_value = "1")]
         interval: u64,
     },
 }
