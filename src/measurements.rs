@@ -1,5 +1,6 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -519,10 +520,26 @@ impl Default for Measurements {
 /// let measurements = collector.get();
 /// assert_eq!(measurements.total_bytes_sent, 1024);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MeasurementsCollector {
     inner: Arc<Mutex<Measurements>>,
     udp_state: Arc<Mutex<UdpPacketState>>,
+    // Atomic counters for high-frequency updates
+    atomic_bytes_sent: Arc<AtomicU64>,
+    atomic_bytes_received: Arc<AtomicU64>,
+    atomic_packets: Arc<AtomicU64>,
+}
+
+impl Clone for MeasurementsCollector {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            udp_state: Arc::clone(&self.udp_state),
+            atomic_bytes_sent: Arc::clone(&self.atomic_bytes_sent),
+            atomic_bytes_received: Arc::clone(&self.atomic_bytes_received),
+            atomic_packets: Arc::clone(&self.atomic_packets),
+        }
+    }
 }
 
 /// UDP packet tracking state
@@ -574,6 +591,9 @@ impl MeasurementsCollector {
         Self {
             inner: Arc::new(Mutex::new(Measurements::new())),
             udp_state: Arc::new(Mutex::new(UdpPacketState::default())),
+            atomic_bytes_sent: Arc::new(AtomicU64::new(0)),
+            atomic_bytes_received: Arc::new(AtomicU64::new(0)),
+            atomic_packets: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -596,6 +616,10 @@ impl MeasurementsCollector {
     /// collector.record_bytes_sent(0, 1024);
     /// ```
     pub fn record_bytes_sent(&self, stream_id: usize, bytes: u64) {
+        // Use atomic for total count (lock-free, high performance)
+        self.atomic_bytes_sent.fetch_add(bytes, Ordering::Relaxed);
+
+        // Update per-stream stats
         let mut m = self.inner.lock();
         if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
             stream.bytes_sent += bytes;
@@ -604,7 +628,6 @@ impl MeasurementsCollector {
             stats.bytes_sent = bytes;
             m.streams.push(stats);
         }
-        m.total_bytes_sent += bytes;
     }
 
     /// Records bytes received on a specific stream.
@@ -617,6 +640,11 @@ impl MeasurementsCollector {
     /// * `stream_id` - The stream identifier
     /// * `bytes` - Number of bytes received
     pub fn record_bytes_received(&self, stream_id: usize, bytes: u64) {
+        // Use atomic for total count (lock-free, high performance)
+        self.atomic_bytes_received
+            .fetch_add(bytes, Ordering::Relaxed);
+
+        // Update per-stream stats
         let mut m = self.inner.lock();
         if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
             stream.bytes_received += bytes;
@@ -625,7 +653,6 @@ impl MeasurementsCollector {
             stats.bytes_received = bytes;
             m.streams.push(stats);
         }
-        m.total_bytes_received += bytes;
     }
 
     /// Adds an interval measurement.
@@ -647,8 +674,21 @@ impl MeasurementsCollector {
     ///
     /// * `_stream_id` - The stream identifier (currently unused)
     pub fn record_udp_packet(&self, _stream_id: usize) {
+        // Use atomic for packet count (lock-free, very high frequency operation)
+        self.atomic_packets.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Syncs atomic counters to the internal measurements struct.
+    ///
+    /// This should be called periodically (e.g., during interval reporting)
+    /// to ensure the locked measurements struct reflects current atomic values.
+    /// The atomic counters provide lock-free updates for high-frequency operations,
+    /// while the locked struct is used for less frequent reads and complex operations.
+    pub fn sync_atomic_counters(&self) {
         let mut m = self.inner.lock();
-        m.total_packets += 1;
+        m.total_bytes_sent = self.atomic_bytes_sent.load(Ordering::Relaxed);
+        m.total_bytes_received = self.atomic_bytes_received.load(Ordering::Relaxed);
+        m.total_packets = self.atomic_packets.load(Ordering::Relaxed);
     }
 
     /// Records a received UDP packet with sequence number and timestamp
@@ -813,6 +853,11 @@ impl MeasurementsCollector {
     /// ```
     pub fn get(&self) -> Measurements {
         let mut m = self.inner.lock().clone();
+
+        // Sync atomic counters into the measurements struct
+        m.total_bytes_sent = self.atomic_bytes_sent.load(Ordering::Relaxed);
+        m.total_bytes_received = self.atomic_bytes_received.load(Ordering::Relaxed);
+        m.total_packets = self.atomic_packets.load(Ordering::Relaxed);
 
         // Calculate UDP loss if we received packets
         if m.total_bytes_received > 0 {
