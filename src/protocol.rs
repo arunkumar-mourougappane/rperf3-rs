@@ -7,6 +7,34 @@ use std::time::Duration;
 /// If the protocol changes in a breaking way, this version should be incremented.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Default stream ID, matching iperf3's behavior.
+///
+/// iperf3 uses stream ID 5 as the default for single stream tests.
+/// For parallel streams, IDs are typically sequential starting from this base.
+pub const DEFAULT_STREAM_ID: usize = 5;
+
+/// Generates a stream ID for parallel streams.
+///
+/// Returns a stream ID based on the stream index, matching iperf3's behavior
+/// where stream IDs are sequential starting from the default.
+///
+/// # Arguments
+///
+/// * `index` - Zero-based stream index (0 for first stream, 1 for second, etc.)
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::protocol::stream_id_for_index;
+///
+/// assert_eq!(stream_id_for_index(0), 5);  // First stream
+/// assert_eq!(stream_id_for_index(1), 7);  // Second stream
+/// assert_eq!(stream_id_for_index(2), 9);  // Third stream
+/// ```
+pub fn stream_id_for_index(index: usize) -> usize {
+    DEFAULT_STREAM_ID + (index * 2)
+}
+
 /// Message types in the rperf3 protocol.
 ///
 /// These messages are exchanged between the client and server during test execution.

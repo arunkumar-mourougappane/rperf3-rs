@@ -1,7 +1,7 @@
 use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
 use crate::measurements::{get_tcp_stats, IntervalStats, MeasurementsCollector};
-use crate::protocol::{deserialize_message, serialize_message, Message};
+use crate::protocol::{deserialize_message, serialize_message, Message, DEFAULT_STREAM_ID};
 use crate::{Error, Result};
 use log::{debug, error, info};
 use std::net::SocketAddr;
@@ -302,7 +302,7 @@ impl Server {
 
                             println!(
                                 "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
-                                5, // stream_id
+                                DEFAULT_STREAM_ID,
                                 interval_start.as_secs_f64(),
                                 elapsed.as_secs_f64(),
                                 transfer_val,
@@ -812,7 +812,7 @@ async fn send_data(
 
                         println!(
                             "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}   {:4} KBytes",
-                            5, // stream_id
+                            DEFAULT_STREAM_ID,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
                             transfer_val,
@@ -908,8 +908,8 @@ async fn receive_data(
                         };
 
                         println!(
-                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
-                            5, // stream_id
+                            "[{:3}]   {:4.2}-{:4.2}  sec   {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
+                            DEFAULT_STREAM_ID,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
                             transfer_val,
