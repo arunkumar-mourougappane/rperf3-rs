@@ -501,9 +501,9 @@ impl Client {
         // Print iperf3-style header
         if !self.config.json {
             if self.config.reverse {
-                println!("[ ID] Interval           Transfer     Bitrate         Retr");
+                println!("[ ID] Interval           Transfer        Bitrate            Retr");
             } else {
-                println!("[ ID] Interval           Transfer     Bitrate         Retr  Cwnd");
+                println!("[ ID] Interval           Transfer        Bitrate            Retr  Cwnd");
             }
         }
 
@@ -687,7 +687,7 @@ impl Client {
                 remote_addr.ip(),
                 remote_addr.port()
             );
-            println!("[ ID] Interval           Transfer     Bitrate         Total Datagrams");
+            println!("[ ID] Interval           Transfer        Bitrate            Total Datagrams");
         }
 
         let result = if self.config.reverse {
@@ -1218,7 +1218,7 @@ async fn send_data(
                             .unwrap_or(0);
 
                         println!(
-                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}   {:4} KBytes",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}   {:4} KBytes",
                             stream_id,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
@@ -1341,7 +1341,7 @@ async fn receive_data(
                         };
 
                         println!(
-                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}",
+                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
                             stream_id,
                             interval_start.as_secs_f64(),
                             elapsed.as_secs_f64(),
@@ -1385,7 +1385,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
         let duration = measurements.total_duration.as_secs_f64();
 
         // Print header for final summary
-        println!("[ ID] Interval           Transfer     Bitrate         Retr");
+        println!("[ ID] Interval           Transfer        Bitrate            Retr");
 
         // Print sender summary
         let sent_bytes = measurements.total_bytes_sent;
@@ -1402,7 +1402,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
         };
 
         println!(
-            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}    {:4}             sender",
+            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}             sender",
             stream_id,
             0.0,
             duration,
@@ -1429,7 +1429,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
             };
 
             println!(
-                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}                  receiver",
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}                  receiver",
                 stream_id, 0.0, duration, recv_val, recv_unit, recv_bitrate_val, recv_bitrate_unit
             );
         }
@@ -1457,7 +1457,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
 
         // Print header for final summary
         println!(
-            "[ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams"
+            "[ ID] Interval           Transfer        Bitrate            Jitter    Lost/Total Datagrams"
         );
 
         // Print sender summary
@@ -1478,7 +1478,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
             };
 
             println!(
-                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}  {:6.3} ms  {}/{} ({:.0}%)  sender",
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:6.3} ms  {}/{} ({:.0}%)  sender",
                 stream_id,
                 0.0,
                 duration,
@@ -1511,7 +1511,7 @@ fn print_results(measurements: &crate::Measurements, stream_id: usize, _reverse:
             };
 
             println!(
-                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {}  {:6.1} {}  {:6.3} ms  {}/{} ({:.0}%)  receiver",
+                "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:6.3} ms  {}/{} ({:.0}%)  receiver",
                 stream_id,
                 0.0,
                 duration,
