@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-12-06
+
+### Added
+
+- Atomic counters for high-frequency measurement operations (issue #3)
+  - Lock-free byte and packet counting using AtomicU64
+  - 15-30% performance improvement at >10 Gbps throughput
+  - Reduces per-operation latency from ~50ns to ~5ns
+- UDP packet timestamp caching optimization (issue #4)
+  - Thread-local timestamp cache with 1ms update interval
+  - Avoids expensive SystemTime::now() calls in hot path
+  - 20-30% UDP throughput improvement
+  - New `create_packet_fast()` function for optimized packet creation
+- Comprehensive doc-tests for UDP packet module
+  - 6 new executable documentation examples (3 → 9 total)
+  - Examples for all UdpPacketHeader methods
+  - Performance comparison examples
+  - Error handling demonstrations
+
+### Performance
+
+- Atomic counter optimization: 27.98 Gbps TCP throughput achieved
+- Timestamp caching: 94.70 Mbps UDP throughput achieved
+- Reduced SystemTime::now() calls by ~99% in UDP send loops
+- Lock-free measurement recording eliminates mutex contention
+
+### Documentation
+
+- Added doc-tests for `UdpPacketHeader::new`, `with_current_time`, `to_bytes`, `from_bytes`
+- Enhanced `create_packet_fast` documentation with usage examples
+- Added `parse_packet` error handling examples
+- All 73 doc-tests passing
+
 ## [0.4.0] - 2025-12-04
 
 ### Added

@@ -1,9 +1,9 @@
 [package]
 name = "rperf3-rs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
-description = "A network throughput measurement tool written in Rust, inspired by iperf3"
+description = "High-performance network throughput measurement tool, inspired by iperf3."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/arunkumar-mourougappane/rperf3-rs"
 readme = "README.md"
