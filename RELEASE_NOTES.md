@@ -6,13 +6,19 @@
 
 ### Overview
 
-Version 0.5.0 is a performance-focused release that delivers significant throughput improvements through two major optimizations: atomic counters for lock-free measurement recording and UDP packet timestamp caching. This release achieves 15-30% performance gains at high throughput (>10 Gbps) and 20-30% UDP improvements by eliminating mutex contention and reducing expensive system calls. Additionally, comprehensive documentation enhancements with 6 new doc-tests improve code quality and developer experience.
+Version 0.5.0 is a performance-focused release that delivers significant throughput
+improvements through two major optimizations: atomic counters for lock-free measurement
+recording and UDP packet timestamp caching. This release achieves 15-30% performance
+gains at high throughput (>10 Gbps) and 20-30% UDP improvements by eliminating mutex
+contention and reducing expensive system calls. Additionally, comprehensive documentation
+enhancements with 6 new doc-tests improve code quality and developer experience.
 
 ## What's New
 
 ### Atomic Counters for Lock-Free Measurements (Issue #3)
 
-Replaced mutex-protected counters with atomic operations to eliminate lock contention in high-frequency measurement operations.
+Replaced mutex-protected counters with atomic operations to eliminate lock contention in
+high-frequency measurement operations.
 
 **Key Changes:**
 
@@ -54,7 +60,8 @@ pub fn record_bytes_sent(&self, bytes: u64) {
 
 ### UDP Timestamp Caching Optimization (Issue #4)
 
-Implemented thread-local timestamp caching to avoid expensive `SystemTime::now()` calls in UDP packet creation hot path.
+Implemented thread-local timestamp caching to avoid expensive `SystemTime::now()`
+calls in UDP packet creation hot path.
 
 **Key Changes:**
 
@@ -104,7 +111,8 @@ for seq in 0..packet_count {
 
 ### Comprehensive Documentation Enhancements
 
-Added extensive doc-tests for the UDP packet module to improve code quality and developer experience.
+Added extensive doc-tests for the UDP packet module to improve code quality and developer
+experience.
 
 **New Doc-Tests:**
 
@@ -249,11 +257,13 @@ let packet = create_packet(sequence, payload_size);
 let packet = create_packet_fast(sequence, payload_size);
 ```
 
-**Note:** Timestamps from `create_packet_fast()` have ±1ms accuracy, which is acceptable for jitter measurement per RFC 3550.
+**Note:** Timestamps from `create_packet_fast()` have ±1ms accuracy, which is
+acceptable for jitter measurement per RFC 3550.
 
 ### Atomic Counter Synchronization
 
-No changes required. The `MeasurementsCollector::get()` method automatically synchronizes atomic counters when retrieving measurements.
+No changes required. The `MeasurementsCollector::get()` method automatically
+synchronizes atomic counters when retrieving measurements.
 
 ## Testing
 
@@ -279,7 +289,8 @@ None
 
 ## Acknowledgments
 
-Special thanks to the Rust community for performance optimization guidance and the atomic operations best practices.
+Special thanks to the Rust community for performance optimization guidance and
+the atomic operations best practices.
 
 ---
 
@@ -289,13 +300,18 @@ Special thanks to the Rust community for performance optimization guidance and t
 
 ### Overview
 
-Version 0.4.0 is a major feature release that implements full bidirectional UDP support with reverse mode, adds TCP bandwidth limiting, fixes critical UDP bugs, resolves all clippy warnings, and significantly enhances project documentation. This release transforms rperf3-rs into a production-ready network testing tool with comprehensive UDP capabilities and improved developer experience.
+Version 0.4.0 is a major feature release that implements full bidirectional UDP
+support with reverse mode, adds TCP bandwidth limiting, fixes critical UDP bugs,
+resolves all clippy warnings, and significantly enhances project documentation.
+This release transforms rperf3-rs into a production-ready network testing tool
+with comprehensive UDP capabilities and improved developer experience.
 
 ## What's New
 
 ### UDP Reverse Mode Implementation
 
-Fully implemented UDP reverse mode (-R flag) with a sophisticated TCP control channel + UDP data channel architecture:
+Fully implemented UDP reverse mode (-R flag) with a sophisticated TCP control
+channel + UDP data channel architecture:
 
 **Architecture:**
 
@@ -497,7 +513,8 @@ rperf3 -c server -u -b 1G
 rperf3 -c server -u -b 50000000  # 50 Mbps
 ```
 
-**Note:** Uses decimal (base 10) notation consistent with network industry standards, NOT binary (1024-based) notation.
+**Note:** Uses decimal (base 10) notation consistent with network industry
+standards, NOT binary (1024-based) notation.
 
 ### Comprehensive README Enhancements
 
@@ -723,7 +740,8 @@ assert!(!measurements.intervals.is_empty());  // ✅ Idiomatic
 
 **Rate-Based Control:**
 
-1. Calculate expected bytes at current time: `expected = (bandwidth * elapsed) / 8`
+1. Calculate expected bytes at current time:
+    `expected = (bandwidth * elapsed) / 8`
 2. Compare with actual bytes sent
 3. If ahead by >0.1ms worth of data, sleep for excess time
 4. Check every 1ms (counter % 1000 == 0)
@@ -965,7 +983,11 @@ Thanks to:
 
 ### Overview
 
-Version 0.3.9 is a major documentation release that adds comprehensive Rust API documentation for all public-facing interfaces and implements automated documentation testing in CI/CD. This release significantly improves the developer experience by providing detailed examples, clear parameter descriptions, and platform-specific guidance for using rperf3-rs as a library.
+Version 0.3.9 is a major documentation release that adds comprehensive Rust API
+documentation for all public-facing interfaces and implements automated
+documentation testing in CI/CD. This release significantly improves the developer
+experience by providing detailed examples, clear parameter descriptions, and
+platform-specific guidance for using rperf3-rs as a library.
 
 ## What's New
 
@@ -1413,7 +1435,10 @@ Thanks to the Rust community for:
 
 ### Overview
 
-Version 0.3.8 adds the necessary metadata for publishing rperf3-rs to crates.io and enhances the project documentation. This release resolves the publishing error encountered when attempting to publish v0.3.7, which failed due to missing required package metadata fields.
+Version 0.3.8 adds the necessary metadata for publishing rperf3-rs to crates.io
+and enhances the project documentation. This release resolves the publishing error
+encountered when attempting to publish v0.3.7, which failed due to missing required
+package metadata fields.
 
 ## What's New
 
@@ -1437,7 +1462,8 @@ README.md has been significantly improved:
 **What is rperf3-rs? Section:**
 
 - Comprehensive explanation of the tool's purpose
-- Clear use cases: diagnosing network issues, validating infrastructure, benchmarking equipment
+- Clear use cases: diagnosing network issues, validating infrastructure, benchmarking
+  equipment
 - Technical foundation: Rust, Tokio async runtime, memory safety guarantees
 
 **Key Capabilities:**
@@ -1606,7 +1632,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Upgrade Notes
 
-This is a metadata-only release with no functional changes to the codebase. Users of v0.3.7 can upgrade without any code modifications.
+This is a metadata-only release with no functional changes to the codebase. Users
+of v0.3.7 can upgrade without any code modifications.
 
 **For Library Users:**
 
@@ -1667,7 +1694,11 @@ Dual-licensed under MIT OR Apache-2.0.
 
 ### Overview
 
-Version 0.3.7 fixes Windows build failures by correcting the cross-rs usage to Linux-only targets. This release resolves the issue where cross-rs was incorrectly applied to Windows targets (i686 and ARM64), which it doesn't support. All Windows builds now use the native MSVC toolchain, completing the build infrastructure improvements.
+Version 0.3.7 fixes Windows build failures by correcting the cross-rs usage to
+Linux-only targets. This release resolves the issue where cross-rs was incorrectly
+applied to Windows targets (i686 and ARM64), which it doesn't support. All Windows
+builds now use the native MSVC toolchain, completing the build infrastructure
+improvements.
 
 ## Critical Fix: Windows Build System
 
@@ -1702,7 +1733,8 @@ Restricted cross-rs to Linux targets only:
 
 ```yaml
 # Correct - Linux targets only
-if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
+if: contains(matrix.target, 'linux') && (contains(matrix.target, 'armv7') || 
+    contains(matrix.target, 'musl') || contains(matrix.target, 'i686'))
   run: cross build --target i686-unknown-linux-gnu  # ✅ Success
 
 # Windows uses native toolchain
@@ -1940,7 +1972,8 @@ While the cross-compiler toolchain was installed correctly:
 - cargo build --target aarch64-unknown-linux-gnu # ❌ Failed - no linker configured
 ```
 
-cargo needs to be explicitly told which linker to use for each cross-compilation target.
+cargo needs to be explicitly told which linker to use for each cross-compilation
+target.
 
 ### The Solution
 
@@ -2357,8 +2390,10 @@ See [CHANGELOG.md](https://github.com/arunkumar-mourougappane/rperf3-rs/blob/mai
 Every release artifact now includes an accompanying `.sha256` checksum file:
 
 - **22 files per release**: 11 binaries + 11 SHA256 checksum files
-- **Platform-specific generation**: Uses native tools (certutil on Windows, shasum on Unix)
-- **Automatic verification**: Checksums generated during build and uploaded to GitHub releases
+- **Platform-specific generation**: Uses native tools (certutil on Windows,
+    shasum on Unix)
+- **Automatic verification**: Checksums generated during build and uploaded to
+    GitHub releases
 
 ### Security Benefits
 
@@ -2540,7 +2575,8 @@ None. This release is fully backward compatible with 0.3.3.
 
 ## Upgrade Notes
 
-Simply download the new version and verify it using the checksum file. No configuration changes required.
+Simply download the new version and verify it using the checksum file. No
+configuration changes required.
 
 ## Migration from Previous Versions
 
