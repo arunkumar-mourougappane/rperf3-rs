@@ -253,10 +253,10 @@ fn send_mmsg_sync(
 
     // Calculate total bytes sent
     let packets_sent = ret as usize;
-    let mut total_bytes = 0;
-    for i in 0..packets_sent {
-        total_bytes += msgvec[i].msg_len as usize;
-    }
+    let total_bytes = msgvec.iter()
+        .take(packets_sent)
+        .map(|msg| msg.msg_len as usize)
+        .sum();
 
     Ok((total_bytes, packets_sent))
 }
@@ -440,6 +440,74 @@ fn sockaddr_to_socketaddr(storage: &libc::sockaddr_storage, _len: u32) -> io::Re
     }
 }
 
+/// Synchronous helper for recvmmsg (Linux only)
+#[cfg(target_os = "linux")]
+fn recv_mmsg_sync(
+    fd: std::os::unix::io::RawFd,
+    packets: &mut [Vec<u8>],
+    addresses: &mut [SocketAddr],
+    _blocking: bool,
+) -> io::Result<usize> {
+    use libc::{iovec, mmsghdr, recvmmsg, sockaddr_storage, MSG_DONTWAIT};
+    use std::mem;
+
+    let count = packets.len().min(MAX_BATCH_SIZE);
+
+    // Prepare mmsghdr structures
+    let mut msgvec: Vec<mmsghdr> = Vec::with_capacity(count);
+    let mut iovecs: Vec<iovec> = Vec::with_capacity(count);
+    let mut addrs: Vec<sockaddr_storage> = Vec::with_capacity(count);
+
+    for packet in packets.iter_mut().take(count) {
+        // Prepare iovec for this packet
+        let iov = iovec {
+            iov_base: packet.as_mut_ptr() as *mut _,
+            iov_len: packet.len(),
+        };
+        iovecs.push(iov);
+
+        // Prepare address storage
+        let storage: sockaddr_storage = unsafe { mem::zeroed() };
+        addrs.push(storage);
+
+        // Prepare mmsghdr
+        let mut hdr: mmsghdr = unsafe { mem::zeroed() };
+        hdr.msg_hdr.msg_name = addrs.last_mut().unwrap() as *mut _ as *mut _;
+        hdr.msg_hdr.msg_namelen = mem::size_of::<sockaddr_storage>() as u32;
+        hdr.msg_hdr.msg_iov = iovecs.last_mut().unwrap() as *mut _;
+        hdr.msg_hdr.msg_iovlen = 1;
+        msgvec.push(hdr);
+    }
+
+    // Perform the recvmmsg operation
+    let ret = unsafe {
+        recvmmsg(
+            fd,
+            msgvec.as_mut_ptr(),
+            count as u32,
+            MSG_DONTWAIT,
+            std::ptr::null_mut(),
+        )
+    };
+
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let received_count = ret as usize;
+
+    // Truncate buffers and extract addresses
+    for (i, msg) in msgvec.iter().enumerate().take(received_count) {
+        let bytes_received = msg.msg_len as usize;
+        packets[i].truncate(bytes_received);
+
+        // Convert sockaddr_storage to SocketAddr
+        addresses[i] = sockaddr_to_socketaddr(&addrs[i], msg.msg_hdr.msg_namelen)?;
+    }
+
+    Ok(received_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,72 +550,4 @@ mod tests {
         assert_eq!(batch.len(), 0);
         assert!(batch.is_empty());
     }
-}
-
-/// Synchronous helper for recvmmsg (Linux only)
-#[cfg(target_os = "linux")]
-fn recv_mmsg_sync(
-    fd: std::os::unix::io::RawFd,
-    packets: &mut [Vec<u8>],
-    addresses: &mut [SocketAddr],
-    _blocking: bool,
-) -> io::Result<usize> {
-    use libc::{iovec, mmsghdr, recvmmsg, sockaddr_storage, MSG_DONTWAIT};
-    use std::mem;
-
-    let count = packets.len().min(MAX_BATCH_SIZE);
-
-    // Prepare mmsghdr structures
-    let mut msgvec: Vec<mmsghdr> = Vec::with_capacity(count);
-    let mut iovecs: Vec<iovec> = Vec::with_capacity(count);
-    let mut addrs: Vec<sockaddr_storage> = Vec::with_capacity(count);
-
-    for i in 0..count {
-        // Prepare iovec for this packet
-        let iov = iovec {
-            iov_base: packets[i].as_mut_ptr() as *mut _,
-            iov_len: packets[i].len(),
-        };
-        iovecs.push(iov);
-
-        // Prepare address storage
-        let storage: sockaddr_storage = unsafe { mem::zeroed() };
-        addrs.push(storage);
-
-        // Prepare mmsghdr
-        let mut hdr: mmsghdr = unsafe { mem::zeroed() };
-        hdr.msg_hdr.msg_name = addrs.last_mut().unwrap() as *mut _ as *mut _;
-        hdr.msg_hdr.msg_namelen = mem::size_of::<sockaddr_storage>() as u32;
-        hdr.msg_hdr.msg_iov = iovecs.last_mut().unwrap() as *mut _;
-        hdr.msg_hdr.msg_iovlen = 1;
-        msgvec.push(hdr);
-    }
-
-    // Perform the recvmmsg operation
-    let ret = unsafe {
-        recvmmsg(
-            fd,
-            msgvec.as_mut_ptr(),
-            count as u32,
-            MSG_DONTWAIT,
-            std::ptr::null_mut(),
-        )
-    };
-
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let received_count = ret as usize;
-
-    // Truncate buffers and extract addresses
-    for i in 0..received_count {
-        let bytes_received = msgvec[i].msg_len as usize;
-        packets[i].truncate(bytes_received);
-
-        // Convert sockaddr_storage to SocketAddr
-        addresses[i] = sockaddr_to_socketaddr(&addrs[i], msgvec[i].msg_hdr.msg_namelen)?;
-    }
-
-    Ok(received_count)
 }
