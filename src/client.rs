@@ -709,6 +709,17 @@ impl Client {
     }
 
     async fn run_udp_send(&self, socket: UdpSocket) -> Result<()> {
+        // Use batch operations on Linux for better performance
+        #[cfg(target_os = "linux")]
+        return self.run_udp_send_batched(socket).await;
+
+        #[cfg(not(target_os = "linux"))]
+        return self.run_udp_send_standard(socket).await;
+    }
+
+    /// Standard UDP send implementation (one packet per system call)
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    async fn run_udp_send_standard(&self, socket: UdpSocket) -> Result<()> {
         let start = Instant::now();
         let mut last_interval = start;
         let mut interval_bytes = 0u64;
@@ -844,6 +855,231 @@ impl Client {
                 Err(e) => {
                     error!("Error sending UDP packet: {}", e);
                     break;
+                }
+            }
+        }
+
+        self.measurements.set_duration(start.elapsed());
+
+        let final_measurements = self.measurements.get();
+
+        // Calculate final UDP metrics
+        let (lost, expected) = self.measurements.calculate_udp_loss();
+        let loss_percent = if expected > 0 {
+            (lost as f64 / expected as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Notify callback of completion
+        self.notify(ProgressEvent::TestCompleted {
+            total_bytes: final_measurements.total_bytes_sent
+                + final_measurements.total_bytes_received,
+            duration: final_measurements.total_duration,
+            bits_per_second: final_measurements.total_bits_per_second(),
+            total_packets: Some(final_measurements.total_packets),
+            jitter_ms: Some(final_measurements.jitter_ms),
+            lost_packets: Some(lost),
+            lost_percent: Some(loss_percent),
+            out_of_order: Some(final_measurements.out_of_order_packets),
+        });
+
+        if !self.config.json {
+            print_results(&final_measurements, self.stream_id, self.config.reverse);
+        } else {
+            // Use detailed results for JSON output
+            let system_info = Some(get_system_info());
+            let test_config = TestConfig {
+                protocol: format!("{:?}", self.config.protocol),
+                num_streams: self.config.parallel,
+                blksize: self.config.buffer_size,
+                omit: 0,
+                duration: self.config.duration.as_secs(),
+                reverse: self.config.reverse,
+            };
+            let detailed_results = self.measurements.get_detailed_results(
+                None, // UDP doesn't have connection info
+                system_info,
+                test_config,
+            );
+            let json = serde_json::to_string_pretty(&detailed_results)?;
+            println!("{}", json);
+        }
+
+        Ok(())
+    }
+
+    /// Batched UDP send implementation using sendmmsg (Linux only)
+    #[cfg(target_os = "linux")]
+    async fn run_udp_send_batched(&self, socket: UdpSocket) -> Result<()> {
+        use crate::batch_socket::{UdpSendBatch, MAX_BATCH_SIZE};
+
+        let start = Instant::now();
+        let mut last_interval = start;
+        let mut interval_bytes = 0u64;
+        let mut interval_packets = 0u64;
+        let mut sequence = 0u64;
+
+        // Calculate payload size accounting for UDP packet header
+        let payload_size = if self.config.buffer_size > crate::udp_packet::UdpPacketHeader::SIZE {
+            self.config.buffer_size - crate::udp_packet::UdpPacketHeader::SIZE
+        } else {
+            1024
+        };
+
+        // Calculate bandwidth limiting parameters
+        let target_bytes_per_sec = self.config.bandwidth.map(|bw| bw / 8);
+        let mut total_bytes_sent = 0u64;
+        let mut last_bandwidth_check = start;
+
+        // Batch for sending multiple packets at once
+        let mut batch = UdpSendBatch::new();
+        let remote_addr = socket.peer_addr()?;
+
+        // Adapt batch size based on bandwidth target
+        let adaptive_batch_size = if let Some(target_bps) = target_bytes_per_sec {
+            // For lower bandwidth, use smaller batches to maintain rate control accuracy
+            let packets_per_sec = target_bps / payload_size as u64;
+            if packets_per_sec < 1000 {
+                // Low rate: use smaller batches for better control
+                (MAX_BATCH_SIZE / 4).max(4)
+            } else if packets_per_sec < 10000 {
+                // Medium rate
+                MAX_BATCH_SIZE / 2
+            } else {
+                // High rate: use full batch size
+                MAX_BATCH_SIZE
+            }
+        } else {
+            // No bandwidth limit: use maximum batch size
+            MAX_BATCH_SIZE
+        };
+
+        while start.elapsed() < self.config.duration {
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Test cancelled by user");
+                break;
+            }
+
+            // Fill the batch
+            while !batch.is_full() && batch.len() < adaptive_batch_size && start.elapsed() < self.config.duration {
+                let packet = crate::udp_packet::create_packet_fast(sequence, payload_size);
+                batch.add(packet, remote_addr);
+                sequence += 1;
+            }
+
+            // Send the batch
+            if !batch.is_empty() {
+                match batch.send(&socket).await {
+                    Ok((bytes_sent, packets_sent)) => {
+                        // Record measurements for all packets in the batch
+                        self.measurements.record_bytes_sent(0, bytes_sent as u64);
+                        for _ in 0..packets_sent {
+                            self.measurements.record_udp_packet(0);
+                        }
+                        
+                        interval_bytes += bytes_sent as u64;
+                        interval_packets += packets_sent as u64;
+                        total_bytes_sent += bytes_sent as u64;
+
+                        // Bandwidth limiting: check if we're sending too fast
+                        if let Some(target_bps) = target_bytes_per_sec {
+                            let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
+
+                            // Check periodically for rate control
+                            if elapsed >= 0.001 {
+                                let expected_bytes = (target_bps as f64 * elapsed) as u64;
+
+                                if total_bytes_sent > expected_bytes {
+                                    // We're sending too fast, sleep to catch up
+                                    let bytes_ahead = (total_bytes_sent - expected_bytes) as f64;
+                                    let sleep_time = bytes_ahead / target_bps as f64;
+                                    if sleep_time > 0.0001 {
+                                        // Only sleep if > 0.1ms
+                                        time::sleep(Duration::from_secs_f64(sleep_time)).await;
+                                    }
+                                }
+
+                                // Reset counters
+                                last_bandwidth_check = Instant::now();
+                                total_bytes_sent = 0;
+                            }
+                        }
+
+                        // Report interval
+                        if last_interval.elapsed() >= self.config.interval {
+                            let elapsed = start.elapsed();
+                            let interval_duration = last_interval.elapsed();
+                            let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+
+                            let interval_start = if elapsed > interval_duration {
+                                elapsed - interval_duration
+                            } else {
+                                Duration::ZERO
+                            };
+
+                            self.measurements.add_interval(IntervalStats {
+                                start: interval_start,
+                                end: elapsed,
+                                bytes: interval_bytes,
+                                bits_per_second: bps,
+                                packets: Some(interval_packets),
+                            });
+
+                            // Calculate UDP metrics for callback
+                            let (lost, expected) = self.measurements.calculate_udp_loss();
+                            let loss_percent = if expected > 0 {
+                                (lost as f64 / expected as f64) * 100.0
+                            } else {
+                                0.0
+                            };
+                            let measurements = self.measurements.get();
+
+                            // Notify callback
+                            self.notify(ProgressEvent::IntervalUpdate {
+                                interval_start,
+                                interval_end: elapsed,
+                                bytes: interval_bytes,
+                                bits_per_second: bps,
+                                packets: Some(interval_packets),
+                                jitter_ms: Some(measurements.jitter_ms),
+                                lost_packets: Some(lost),
+                                lost_percent: Some(loss_percent),
+                                retransmits: None,
+                            });
+
+                            if !self.config.json {
+                                // Format bytes as KBytes or MBytes
+                                let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
+                                    (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                                } else {
+                                    (interval_bytes as f64 / 1_000.0, "KBytes")
+                                };
+
+                                // Format bitrate as Mbits/sec
+                                let bitrate_val = bps / 1_000_000.0;
+
+                                println!(
+                                    "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
+                                    self.stream_id,
+                                    interval_start.as_secs_f64(),
+                                    elapsed.as_secs_f64(),
+                                    transfer_val,
+                                    transfer_unit,
+                                    bitrate_val,
+                                    interval_packets
+                                );
+                            }
+                            interval_bytes = 0;
+                            interval_packets = 0;
+                            last_interval = Instant::now();
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error sending batch: {}", e);
+                        break;
+                    }
                 }
             }
         }
