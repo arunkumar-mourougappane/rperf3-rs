@@ -228,8 +228,20 @@ impl Server {
 
     async fn run_udp(&self, bind_addr: &str) -> Result<()> {
         let socket = UdpSocket::bind(bind_addr).await?;
-        info!("UDP server listening on {}", bind_addr);
+        let local_addr = socket.local_addr()?;
+        info!("UDP server listening on {}", local_addr);
 
+        // Use batch operations on Linux for better performance
+        #[cfg(target_os = "linux")]
+        return self.run_udp_batched(socket).await;
+
+        #[cfg(not(target_os = "linux"))]
+        return self.run_udp_standard(socket).await;
+    }
+
+    /// Standard UDP receive implementation (one packet per system call)
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    async fn run_udp_standard(&self, socket: UdpSocket) -> Result<()> {
         let mut buf = self.udp_buffer_pool.get();
         let start = Instant::now();
         let mut last_interval = start;
@@ -319,6 +331,119 @@ impl Server {
                 }
                 Err(e) => {
                     error!("Error receiving UDP packet: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Batched UDP receive implementation using recvmmsg (Linux only)
+    #[cfg(target_os = "linux")]
+    async fn run_udp_batched(&self, socket: UdpSocket) -> Result<()> {
+        use crate::batch_socket::UdpRecvBatch;
+
+        let mut batch = UdpRecvBatch::new();
+        let start = Instant::now();
+        let mut last_interval = start;
+        let mut interval_bytes = 0u64;
+        let mut interval_packets = 0u64;
+
+        loop {
+            // Check for cancellation
+            if self.cancellation_token.is_cancelled() {
+                info!("Server shutting down gracefully");
+                break;
+            }
+
+            // Receive a batch of packets
+            match batch.recv(&socket).await {
+                Ok(count) => {
+                    if count == 0 {
+                        continue;
+                    }
+
+                    debug!("Received {} packets in batch", count);
+
+                    // Process each packet in the batch
+                    for i in 0..count {
+                        if let Some((packet, addr)) = batch.get(i) {
+                            debug!("Processing packet {} of {} bytes from {}", i, packet.len(), addr);
+
+                            // Parse UDP packet
+                            if let Some((header, _payload)) = crate::udp_packet::parse_packet(packet) {
+                                // Get current receive timestamp
+                                let recv_timestamp_us = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_micros() as u64;
+
+                                // Record packet with timing information
+                                self.measurements.record_udp_packet_received(
+                                    header.sequence,
+                                    header.timestamp_us,
+                                    recv_timestamp_us,
+                                );
+                                self.measurements.record_bytes_received(0, packet.len() as u64);
+
+                                interval_bytes += packet.len() as u64;
+                                interval_packets += 1;
+                            } else {
+                                debug!("Received non-rperf3 UDP packet from {}", addr);
+                            }
+                        }
+                    }
+
+                    // Report interval
+                    if last_interval.elapsed() >= self.config.interval {
+                        let elapsed = start.elapsed();
+                        let interval_duration = last_interval.elapsed();
+                        let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+
+                        let interval_start = if elapsed > interval_duration {
+                            elapsed - interval_duration
+                        } else {
+                            Duration::ZERO
+                        };
+
+                        self.measurements.add_interval(IntervalStats {
+                            start: interval_start,
+                            end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                            packets: Some(interval_packets),
+                        });
+
+                        if !self.config.json {
+                            // Format bytes as KBytes or MBytes
+                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
+                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
+                            } else {
+                                (interval_bytes as f64 / 1_000.0, "KBytes")
+                            };
+
+                            // Format bitrate as Mbits/sec
+                            let bitrate_val = bps / 1_000_000.0;
+
+                            println!(
+                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
+                                DEFAULT_STREAM_ID,
+                                interval_start.as_secs_f64(),
+                                elapsed.as_secs_f64(),
+                                transfer_val,
+                                transfer_unit,
+                                bitrate_val,
+                                interval_packets
+                            );
+                        }
+
+                        interval_bytes = 0;
+                        interval_packets = 0;
+                        last_interval = Instant::now();
+                    }
+                }
+                Err(e) => {
+                    error!("Error receiving UDP batch: {}", e);
                 }
             }
         }
