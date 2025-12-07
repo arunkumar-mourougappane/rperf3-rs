@@ -141,16 +141,16 @@ impl UdpSendBatch {
         let fd = socket.as_raw_fd();
         let packets = &self.packets;
         let addresses = &self.addresses;
-        
+
         // Call the synchronous helper that does all the unsafe work
         let result = send_mmsg_sync(fd, packets, addresses)?;
-        
+
         // Remove sent packets from the batch
         if result.1 > 0 {
             self.packets.drain(..result.1);
             self.addresses.drain(..result.1);
         }
-        
+
         Ok(result)
     }
 }
@@ -162,11 +162,14 @@ fn send_mmsg_sync(
     packets: &[Vec<u8>],
     addresses: &[SocketAddr],
 ) -> io::Result<(usize, usize)> {
-    use libc::{iovec, mmsghdr, sendmmsg, sockaddr_in, sockaddr_in6, sockaddr_storage, AF_INET, AF_INET6, MSG_DONTWAIT};
+    use libc::{
+        iovec, mmsghdr, sendmmsg, sockaddr_in, sockaddr_in6, sockaddr_storage, AF_INET, AF_INET6,
+        MSG_DONTWAIT,
+    };
     use std::mem;
 
     let count = packets.len();
-    
+
     // Prepare mmsghdr structures
     let mut msgvec: Vec<mmsghdr> = Vec::with_capacity(count);
     let mut iovecs: Vec<iovec> = Vec::with_capacity(count);
@@ -233,14 +236,7 @@ fn send_mmsg_sync(
     }
 
     // Perform the sendmmsg operation - this is non-blocking (MSG_DONTWAIT)
-    let ret = unsafe {
-        sendmmsg(
-            fd,
-            msgvec.as_mut_ptr(),
-            count as u32,
-            MSG_DONTWAIT,
-        )
-    };
+    let ret = unsafe { sendmmsg(fd, msgvec.as_mut_ptr(), count as u32, MSG_DONTWAIT) };
 
     if ret < 0 {
         let err = io::Error::last_os_error();
@@ -253,7 +249,8 @@ fn send_mmsg_sync(
 
     // Calculate total bytes sent
     let packets_sent = ret as usize;
-    let total_bytes = msgvec.iter()
+    let total_bytes = msgvec
+        .iter()
         .take(packets_sent)
         .map(|msg| msg.msg_len as usize)
         .sum();
@@ -538,7 +535,7 @@ mod tests {
     #[test]
     fn test_batch_clear() {
         let mut batch = UdpSendBatch::new();
-        
+
         for i in 0..10 {
             let packet = vec![i as u8; 100];
             let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
