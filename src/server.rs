@@ -368,15 +368,23 @@ impl Server {
                     // Process each packet in the batch
                     for i in 0..count {
                         if let Some((packet, addr)) = batch.get(i) {
-                            debug!("Processing packet {} of {} bytes from {}", i, packet.len(), addr);
+                            debug!(
+                                "Processing packet {} of {} bytes from {}",
+                                i,
+                                packet.len(),
+                                addr
+                            );
 
                             // Parse UDP packet
-                            if let Some((header, _payload)) = crate::udp_packet::parse_packet(packet) {
+                            if let Some((header, _payload)) =
+                                crate::udp_packet::parse_packet(packet)
+                            {
                                 // Get current receive timestamp
                                 let recv_timestamp_us = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .expect("Time went backwards")
-                                    .as_micros() as u64;
+                                    .as_micros()
+                                    as u64;
 
                                 // Record packet with timing information
                                 self.measurements.record_udp_packet_received(
@@ -384,7 +392,8 @@ impl Server {
                                     header.timestamp_us,
                                     recv_timestamp_us,
                                 );
-                                self.measurements.record_bytes_received(0, packet.len() as u64);
+                                self.measurements
+                                    .record_bytes_received(0, packet.len() as u64);
 
                                 interval_bytes += packet.len() as u64;
                                 interval_packets += 1;

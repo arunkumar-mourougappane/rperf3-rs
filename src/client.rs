@@ -963,7 +963,10 @@ impl Client {
             }
 
             // Fill the batch
-            while !batch.is_full() && batch.len() < adaptive_batch_size && start.elapsed() < self.config.duration {
+            while !batch.is_full()
+                && batch.len() < adaptive_batch_size
+                && start.elapsed() < self.config.duration
+            {
                 let packet = crate::udp_packet::create_packet_fast(sequence, payload_size);
                 batch.add(packet, remote_addr);
                 sequence += 1;
@@ -978,7 +981,7 @@ impl Client {
                         for _ in 0..packets_sent {
                             self.measurements.record_udp_packet(0);
                         }
-                        
+
                         interval_bytes += bytes_sent as u64;
                         interval_packets += packets_sent as u64;
                         total_bytes_sent += bytes_sent as u64;
@@ -1011,7 +1014,8 @@ impl Client {
                         if last_interval.elapsed() >= self.config.interval {
                             let elapsed = start.elapsed();
                             let interval_duration = last_interval.elapsed();
-                            let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+                            let bps =
+                                (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
 
                             let interval_start = if elapsed > interval_duration {
                                 elapsed - interval_duration

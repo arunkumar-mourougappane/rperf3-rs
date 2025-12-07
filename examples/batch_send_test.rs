@@ -25,7 +25,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let packet_size = 1024;
     let packet_count = 1000;
 
-    println!("\nSending {} packets of {} bytes each", packet_count, packet_size);
+    println!(
+        "\nSending {} packets of {} bytes each",
+        packet_count, packet_size
+    );
     println!("Batch size: {} packets per system call", MAX_BATCH_SIZE);
 
     // Measure batch sending
@@ -71,12 +74,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Results ===");
     println!("Total packets sent: {}", total_packets);
-    println!("Total bytes sent: {} ({:.2} MB)", total_bytes, total_bytes as f64 / 1_000_000.0);
+    println!(
+        "Total bytes sent: {} ({:.2} MB)",
+        total_bytes,
+        total_bytes as f64 / 1_000_000.0
+    );
     println!("Batches sent: {}", batch_count);
-    println!("Avg packets per batch: {:.1}", total_packets as f64 / batch_count as f64);
+    println!(
+        "Avg packets per batch: {:.1}",
+        total_packets as f64 / batch_count as f64
+    );
     println!("Duration: {:.3} seconds", duration.as_secs_f64());
-    println!("Throughput: {:.2} Mbps", (total_bytes * 8) as f64 / duration.as_secs_f64() / 1_000_000.0);
-    println!("Packet rate: {:.0} pps", total_packets as f64 / duration.as_secs_f64());
+    println!(
+        "Throughput: {:.2} Mbps",
+        (total_bytes * 8) as f64 / duration.as_secs_f64() / 1_000_000.0
+    );
+    println!(
+        "Packet rate: {:.0} pps",
+        total_packets as f64 / duration.as_secs_f64()
+    );
 
     #[cfg(target_os = "linux")]
     println!("\n✓ Using Linux sendmmsg for batched operations");
