@@ -188,6 +188,7 @@
 //! - **Packet loss detection**: Sub-millisecond precision
 //! - **Jitter measurement**: RFC 3550 compliant algorithm
 
+pub mod batch_socket;
 pub mod buffer_pool;
 pub mod client;
 pub mod config;
@@ -197,6 +198,7 @@ pub mod protocol;
 pub mod server;
 pub mod udp_packet;
 
+pub use batch_socket::{UdpRecvBatch, UdpSendBatch, MAX_BATCH_SIZE};
 pub use client::{Client, ProgressCallback, ProgressEvent};
 pub use config::{Config, Protocol};
 pub use error::{Error, Result};
