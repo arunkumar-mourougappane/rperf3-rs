@@ -39,7 +39,7 @@ async fn main() {
         packet_count += 1;
 
         // Print progress every 100 packets
-        if packet_count % 100 == 0 {
+        if packet_count.is_multiple_of(100) {
             let elapsed = start.elapsed().as_secs_f64();
             let current_bps = (total_bytes as f64 * 8.0) / elapsed;
             let current_mbps = current_bps / 1_000_000.0;
