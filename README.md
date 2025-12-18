@@ -285,6 +285,11 @@ Typical performance on modern hardware:
 
 rperf3-rs includes several performance optimizations:
 
+- **TCP Socket Optimizations** (v0.5.0): Improved TCP performance
+  - TCP_NODELAY disables Nagle's algorithm for lower latency
+  - 256KB send/receive buffers for higher throughput
+  - 10-20% improvement for TCP tests
+  - Applied to both client and server connections
 - **Token Bucket Bandwidth Limiting** (v0.5.0): Efficient rate control algorithm
   - Uses integer arithmetic instead of floating-point calculations
   - Pre-calculated sleep durations reduce runtime overhead

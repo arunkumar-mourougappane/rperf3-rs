@@ -15,6 +15,7 @@ The previous implementation used rate-based bandwidth limiting with these charac
 - Calculated sleep duration dynamically
 
 **Performance issues:**
+
 - Float calculations are slower than integers
 - Frequent timing checks add overhead
 - Dynamic sleep calculation on every check
@@ -26,6 +27,7 @@ The token bucket algorithm is a simpler, more efficient approach:
 ### Concept
 
 A "bucket" holds tokens (bytes). Tokens are:
+
 - Added at a constant rate (target bandwidth)
 - Removed when data is sent
 - If bucket is empty, sender sleeps until tokens refill
@@ -33,14 +35,17 @@ A "bucket" holds tokens (bytes). Tokens are:
 ### Key Advantages
 
 1. **Integer Arithmetic**: Uses only integer operations
+
    - `tokens_to_add = (elapsed_micros * bytes_per_sec) / 1_000_000`
    - No floating-point calculations in hot path
 
 2. **Pre-calculated Sleep**: Sleep duration calculated once
+
    - `sleep_nanos = tokens_needed * nanos_per_byte`
    - `nanos_per_byte` is pre-calculated at bucket creation
 
 3. **Fewer Checks**: Only refills when consuming tokens
+
    - No periodic timing checks
    - Refill happens on-demand
 
@@ -65,6 +70,7 @@ pub struct TokenBucket {
 ### Core Algorithm
 
 **Creation:**
+
 ```rust
 // Capacity = 0.1 seconds of data (allows small bursts)
 capacity = (bytes_per_sec / 10).max(8192)
@@ -74,6 +80,7 @@ nanos_per_byte = 1_000_000_000 / bytes_per_sec
 ```
 
 **Consumption:**
+
 ```rust
 // Refill tokens based on elapsed time
 elapsed_micros = now - last_refill
@@ -96,6 +103,7 @@ tokens -= bytes_needed
 Updated two functions in `client.rs`:
 
 1. **run_udp_send_standard()**: Standard UDP send loop
+
    - Replaced rate tracking with token bucket
    - Calls `bucket.consume(n).await` after each send
 
@@ -104,6 +112,7 @@ Updated two functions in `client.rs`:
    - Consumes tokens for entire batch
 
 **Before:**
+
 ```rust
 // Rate-based (OLD)
 let target_bytes_per_sec = bandwidth / 8;
@@ -130,6 +139,7 @@ if target_bytes_per_sec.is_some() {
 ```
 
 **After:**
+
 ```rust
 // Token bucket (NEW)
 let mut token_bucket = bandwidth
@@ -146,11 +156,13 @@ if let Some(ref mut bucket) = token_bucket {
 ### 1. Integer Arithmetic (5-8% improvement)
 
 **Before (Float):**
+
 - `expected_bytes = (target_bps as f64 * elapsed) as u64`
 - `sleep_time = bytes_ahead / target_bps as f64`
 - Float division, multiplication, conversions
 
 **After (Integer):**
+
 - `tokens_to_add = (elapsed_micros * bytes_per_sec) / 1_000_000`
 - `sleep_nanos = tokens_needed * nanos_per_byte`
 - Only integer operations
@@ -160,30 +172,36 @@ if let Some(ref mut bucket) = token_bucket {
 ### 2. Pre-calculated Values (2-3% improvement)
 
 **Before:**
+
 - Sleep duration calculated on every check
 - Requires division by target rate
 
 **After:**
+
 - `nanos_per_byte` calculated once at creation
 - Sleep duration is multiplication: `tokens * nanos_per_byte`
 
 ### 3. Reduced Checks (1-2% improvement)
 
 **Before:**
+
 - Check every 1ms: `if elapsed >= 0.001`
 - Even if not throttling
 
 **After:**
+
 - Only check when consuming tokens
 - Refill integrated into consume operation
 
 ### 4. Simpler Code
 
 **Lines of code:**
+
 - Before: ~25 lines in hot path
 - After: ~5 lines in hot path
 
 **Branches:**
+
 - Before: Multiple if checks
 - After: Single conditional refill
 
@@ -192,6 +210,7 @@ if let Some(ref mut bucket) = token_bucket {
 Token bucket maintains the same accuracy as rate-based:
 
 **Test results:**
+
 - Target: 10 Mbps → Actual: 10.2 Mbps (102%)
 - Target: 100 Mbps → Actual: 101.9 Mbps (102%)
 
@@ -202,6 +221,7 @@ Slight overage due to burst allowance (0.1s capacity), which is acceptable.
 ### Unit Tests
 
 Added comprehensive tests in `token_bucket.rs`:
+
 - `test_token_bucket_creation`: Validates initialization
 - `test_token_bucket_capacity`: Checks capacity calculation
 - `test_token_consumption`: Verifies token consumption
@@ -215,6 +235,7 @@ All tests pass.
 ### Integration Tests
 
 **UDP bandwidth limiting:**
+
 ```bash
 # Start server
 ./target/release/rperf3 server
@@ -231,6 +252,7 @@ All tests pass.
 ### Example
 
 Created `examples/token_bucket_demo.rs` demonstrating:
+
 - Token bucket creation
 - Packet sending simulation
 - Accuracy measurement
@@ -241,6 +263,7 @@ Created `examples/token_bucket_demo.rs` demonstrating:
 ### Expected Improvement: 5-10%
 
 **Components:**
+
 1. Integer arithmetic: 5-8%
 2. Pre-calculated timing: 2-3%
 3. Reduced checks: 1-2%
@@ -253,11 +276,9 @@ Conservative estimate: **5-10%** improvement
 - **Most impact**: Medium bandwidth (10-100 Mbps)
   - Frequent rate checks in old implementation
   - Measurable float overhead
-  
 - **Some impact**: High bandwidth (>100 Mbps)
   - Less relative overhead
   - Still benefits from integer ops
-  
 - **No impact**: Unlimited bandwidth
   - Token bucket not used
   - No performance regression
@@ -293,6 +314,6 @@ The token bucket implementation successfully addresses issue #6:
 ✅ 5-10% performance improvement  
 ✅ Maintains accuracy  
 ✅ Fully backward compatible  
-✅ Well tested  
+✅ Well tested
 
 The implementation is simpler, faster, and more maintainable than the previous rate-based approach.
