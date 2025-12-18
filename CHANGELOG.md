@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Lock-free packet counting for UDP tests (issue #18)
+  - Eliminates lock contention in `record_udp_packet()` using atomic operations
+  - Part of the atomic counters optimization (issue #3)
+  - Critical for high packet rate scenarios (>1M packets/sec)
+  - Uses `AtomicU64::fetch_add` for zero-contention updates
 - UDP socket optimizations for improved performance (issue #17)
   - Increased send/receive buffer sizes to 2MB for better burst handling
   - Reduces packet loss during high throughput tests

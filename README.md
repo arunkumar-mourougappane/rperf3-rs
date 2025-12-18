@@ -307,8 +307,10 @@ rperf3-rs includes several performance optimizations:
   - Automatic fallback to standard operations on non-Linux platforms
 - **Atomic Counters** (v0.5.0): Lock-free byte and packet counting using AtomicU64
   - Eliminates mutex contention in measurement hot path
+  - Lock-free `record_udp_packet()` for high packet rates (issue #18)
   - 15-30% performance improvement at >10 Gbps throughput
   - Reduces per-operation latency from ~50ns to ~5ns
+  - Critical for UDP tests at >1M packets/sec
 - **UDP Timestamp Caching** (v0.5.0): Thread-local timestamp cache
   with 1ms update interval
   - Avoids expensive SystemTime::now() calls in UDP send loops
