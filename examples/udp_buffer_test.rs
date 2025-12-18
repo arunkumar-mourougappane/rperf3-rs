@@ -1,9 +1,9 @@
 /// Example demonstrating UDP socket optimizations (2MB buffer sizes)
-/// 
+///
 /// This example demonstrates the UDP socket buffer improvements from issue #17.
 ///
 /// To run this test:
-/// 
+///
 /// 1. Start the server in one terminal:
 /// ```
 /// cargo run --release -- -s -p 5201
@@ -53,7 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("\n=== Results ===");
-    println!("Total transferred: {:.2} MB", total_bytes as f64 / 1_000_000.0);
+    println!(
+        "Total transferred: {:.2} MB",
+        total_bytes as f64 / 1_000_000.0
+    );
     println!("Throughput: {:.2} Mbps", bits_per_second / 1_000_000.0);
     println!("Packet loss: {:.2}%", packet_loss);
     println!("\nSocket optimizations applied:");
