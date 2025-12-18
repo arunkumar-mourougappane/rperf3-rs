@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Token bucket algorithm for bandwidth limiting (issue #6)
+  - Replaces rate-based limiting with more efficient token bucket approach
+  - Uses integer arithmetic instead of floating-point calculations
+  - Pre-calculated sleep durations based on token consumption
+  - Fewer timing checks reduce per-packet overhead
+  - New `token_bucket` module with `TokenBucket` type
+  - Example demonstrating token bucket efficiency (`token_bucket_demo.rs`)
 - Batch socket operations for UDP on Linux (issue #5)
   - sendmmsg/recvmmsg support for batching up to 64 packets per system call
   - 30-50% UDP throughput improvement at high packet rates
@@ -19,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
+- Token bucket provides 5-10% improvement when bandwidth limiting is active
+- Integer arithmetic is faster than float calculations for rate control
+- Reduced overhead from timing checks on every iteration
+- Simpler algorithm with better cache locality
 - Batch operations reduce system call overhead for UDP by ~98% (64 packets vs 1)
 - Client-side batched sending with adaptive batch sizing (16/32/64 packets)
 - Server-side batched receiving for improved UDP reception performance

@@ -733,12 +733,11 @@ impl Client {
             1024
         };
 
-        // Calculate bandwidth limiting parameters
-        // Strategy: Send packets without delay, but track bandwidth and sleep when needed
-        let target_bytes_per_sec = self.config.bandwidth.map(|bw| bw / 8);
-
-        let mut total_bytes_sent = 0u64;
-        let mut last_bandwidth_check = start;
+        // Create token bucket for bandwidth limiting if needed
+        let mut token_bucket = self
+            .config
+            .bandwidth
+            .map(|bw| crate::token_bucket::TokenBucket::new(bw / 8));
 
         while start.elapsed() < self.config.duration {
             // Check for cancellation
@@ -756,31 +755,10 @@ impl Client {
                     interval_bytes += n as u64;
                     interval_packets += 1;
                     sequence += 1;
-                    total_bytes_sent += n as u64;
 
-                    // Bandwidth limiting: check if we're sending too fast
-                    if let Some(target_bps) = target_bytes_per_sec {
-                        let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
-
-                        // Check every 1ms for more accurate rate control
-                        if elapsed >= 0.001 {
-                            let expected_bytes = (target_bps as f64 * elapsed) as u64;
-                            let bytes_sent_in_period = total_bytes_sent;
-
-                            if bytes_sent_in_period > expected_bytes {
-                                // We're sending too fast, sleep to catch up
-                                let bytes_ahead = (bytes_sent_in_period - expected_bytes) as f64;
-                                let sleep_time = bytes_ahead / target_bps as f64;
-                                if sleep_time > 0.0001 {
-                                    // Only sleep if > 0.1ms
-                                    time::sleep(Duration::from_secs_f64(sleep_time)).await;
-                                }
-                            }
-
-                            // Reset counters
-                            last_bandwidth_check = Instant::now();
-                            total_bytes_sent = 0;
-                        }
+                    // Token bucket bandwidth limiting
+                    if let Some(ref mut bucket) = token_bucket {
+                        bucket.consume(n).await;
                     }
 
                     // Report interval
@@ -927,18 +905,20 @@ impl Client {
             1024
         };
 
-        // Calculate bandwidth limiting parameters
-        let target_bytes_per_sec = self.config.bandwidth.map(|bw| bw / 8);
-        let mut total_bytes_sent = 0u64;
-        let mut last_bandwidth_check = start;
+        // Create token bucket for bandwidth limiting if needed
+        let mut token_bucket = self
+            .config
+            .bandwidth
+            .map(|bw| crate::token_bucket::TokenBucket::new(bw / 8));
 
         // Batch for sending multiple packets at once
         let mut batch = UdpSendBatch::new();
         let remote_addr = socket.peer_addr()?;
 
         // Adapt batch size based on bandwidth target
-        let adaptive_batch_size = if let Some(target_bps) = target_bytes_per_sec {
+        let adaptive_batch_size = if let Some(ref bucket) = token_bucket {
             // For lower bandwidth, use smaller batches to maintain rate control accuracy
+            let target_bps = bucket.bytes_per_sec;
             let packets_per_sec = target_bps / payload_size as u64;
             if packets_per_sec < 1000 {
                 // Low rate: use smaller batches for better control
@@ -984,30 +964,10 @@ impl Client {
 
                         interval_bytes += bytes_sent as u64;
                         interval_packets += packets_sent as u64;
-                        total_bytes_sent += bytes_sent as u64;
 
-                        // Bandwidth limiting: check if we're sending too fast
-                        if let Some(target_bps) = target_bytes_per_sec {
-                            let elapsed = last_bandwidth_check.elapsed().as_secs_f64();
-
-                            // Check periodically for rate control
-                            if elapsed >= 0.001 {
-                                let expected_bytes = (target_bps as f64 * elapsed) as u64;
-
-                                if total_bytes_sent > expected_bytes {
-                                    // We're sending too fast, sleep to catch up
-                                    let bytes_ahead = (total_bytes_sent - expected_bytes) as f64;
-                                    let sleep_time = bytes_ahead / target_bps as f64;
-                                    if sleep_time > 0.0001 {
-                                        // Only sleep if > 0.1ms
-                                        time::sleep(Duration::from_secs_f64(sleep_time)).await;
-                                    }
-                                }
-
-                                // Reset counters
-                                last_bandwidth_check = Instant::now();
-                                total_bytes_sent = 0;
-                            }
+                        // Token bucket bandwidth limiting
+                        if let Some(ref mut bucket) = token_bucket {
+                            bucket.consume(bytes_sent).await;
                         }
 
                         // Report interval
