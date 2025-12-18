@@ -668,11 +668,32 @@ impl MeasurementsCollector {
 
     /// Records that a UDP packet was sent.
     ///
-    /// Increments the total packet count for UDP tests.
+    /// Uses lock-free atomic operations for high-performance packet counting.
+    /// This eliminates lock contention at high packet rates, providing significant
+    /// performance benefits for UDP throughput tests.
     ///
     /// # Arguments
     ///
     /// * `_stream_id` - The stream identifier (currently unused)
+    ///
+    /// # Performance
+    ///
+    /// This is a lock-free operation using `AtomicU64::fetch_add`, which is
+    /// critical for UDP tests at high packet rates (>1M packets/sec).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::measurements::MeasurementsCollector;
+    ///
+    /// let collector = MeasurementsCollector::new();
+    /// collector.record_udp_packet(0);
+    /// collector.record_udp_packet(0);
+    /// collector.sync_atomic_counters();
+    ///
+    /// let measurements = collector.get();
+    /// assert_eq!(measurements.total_packets, 2);
+    /// ```
     pub fn record_udp_packet(&self, _stream_id: usize) {
         // Use atomic for packet count (lock-free, very high frequency operation)
         self.atomic_packets.fetch_add(1, Ordering::Relaxed);
