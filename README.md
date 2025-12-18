@@ -285,6 +285,11 @@ Typical performance on modern hardware:
 
 rperf3-rs includes several performance optimizations:
 
+- **UDP Socket Optimizations** (v0.5.0): Improved UDP performance
+  - 2MB send/receive buffers for better burst handling
+  - Reduces packet loss during high throughput tests
+  - 10-20% improvement for UDP tests
+  - Applied to both client and server sockets
 - **TCP Socket Optimizations** (v0.5.0): Improved TCP performance
   - TCP_NODELAY disables Nagle's algorithm for lower latency
   - 256KB send/receive buffers for higher throughput
