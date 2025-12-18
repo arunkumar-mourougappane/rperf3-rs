@@ -196,6 +196,7 @@ pub mod error;
 pub mod measurements;
 pub mod protocol;
 pub mod server;
+pub mod token_bucket;
 pub mod udp_packet;
 
 pub use batch_socket::{UdpRecvBatch, UdpSendBatch, MAX_BATCH_SIZE};
@@ -205,6 +206,7 @@ pub use error::{Error, Result};
 pub use measurements::Measurements;
 pub use protocol::{stream_id_for_index, DEFAULT_STREAM_ID};
 pub use server::Server;
+pub use token_bucket::TokenBucket;
 
 /// Library version string.
 ///

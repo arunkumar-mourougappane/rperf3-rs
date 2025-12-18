@@ -285,6 +285,11 @@ Typical performance on modern hardware:
 
 rperf3-rs includes several performance optimizations:
 
+- **Token Bucket Bandwidth Limiting** (v0.5.0): Efficient rate control algorithm
+  - Uses integer arithmetic instead of floating-point calculations
+  - Pre-calculated sleep durations reduce runtime overhead
+  - 5-10% improvement when bandwidth limiting is active
+  - Simpler algorithm with better cache locality
 - **Batch Socket Operations** (v0.5.0): sendmmsg/recvmmsg on Linux
   - Reduces system call overhead by batching up to 64 UDP packets
   - 30-50% UDP throughput improvement at high packet rates
