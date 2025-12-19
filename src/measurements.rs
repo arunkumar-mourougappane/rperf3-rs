@@ -503,11 +503,47 @@ impl Default for Measurements {
     }
 }
 
+/// Per-stream measurements with atomic counters for lock-free updates.
+///
+/// This structure maintains counters for a single stream using atomic operations,
+/// eliminating lock contention when multiple streams update in parallel.
+#[derive(Debug)]
+struct PerStreamMeasurements {
+    stream_id: usize,
+    bytes_sent: AtomicU64,
+    bytes_received: AtomicU64,
+    packets: AtomicU64,
+}
+
+impl PerStreamMeasurements {
+    fn new(stream_id: usize) -> Self {
+        Self {
+            stream_id,
+            bytes_sent: AtomicU64::new(0),
+            bytes_received: AtomicU64::new(0),
+            packets: AtomicU64::new(0),
+        }
+    }
+
+    fn to_stream_stats(&self, duration: Duration) -> StreamStats {
+        StreamStats {
+            stream_id: self.stream_id,
+            bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
+            bytes_received: self.bytes_received.load(Ordering::Relaxed),
+            duration,
+            retransmits: None,
+        }
+    }
+}
+
 /// Thread-safe measurements collector for concurrent access.
 ///
 /// This collector wraps `Measurements` in thread-safe structures to allow multiple
 /// streams or async tasks to record data concurrently. It also maintains UDP packet
 /// tracking state for jitter and loss calculations.
+///
+/// Per-stream measurements use atomic counters for lock-free updates, reducing
+/// contention in parallel stream scenarios.
 ///
 /// # Examples
 ///
@@ -524,6 +560,8 @@ impl Default for Measurements {
 pub struct MeasurementsCollector {
     inner: Arc<Mutex<Measurements>>,
     udp_state: Arc<Mutex<UdpPacketState>>,
+    // Per-stream atomic counters for lock-free updates
+    per_stream: Arc<Mutex<Vec<Arc<PerStreamMeasurements>>>>,
     // Atomic counters for high-frequency updates
     atomic_bytes_sent: Arc<AtomicU64>,
     atomic_bytes_received: Arc<AtomicU64>,
@@ -535,6 +573,7 @@ impl Clone for MeasurementsCollector {
         Self {
             inner: Arc::clone(&self.inner),
             udp_state: Arc::clone(&self.udp_state),
+            per_stream: Arc::clone(&self.per_stream),
             atomic_bytes_sent: Arc::clone(&self.atomic_bytes_sent),
             atomic_bytes_received: Arc::clone(&self.atomic_bytes_received),
             atomic_packets: Arc::clone(&self.atomic_packets),
@@ -591,16 +630,34 @@ impl MeasurementsCollector {
         Self {
             inner: Arc::new(Mutex::new(Measurements::new())),
             udp_state: Arc::new(Mutex::new(UdpPacketState::default())),
+            per_stream: Arc::new(Mutex::new(Vec::new())),
             atomic_bytes_sent: Arc::new(AtomicU64::new(0)),
             atomic_bytes_received: Arc::new(AtomicU64::new(0)),
             atomic_packets: Arc::new(AtomicU64::new(0)),
         }
     }
 
+    /// Gets or creates per-stream measurements for a specific stream ID.
+    ///
+    /// Returns an Arc to the per-stream measurements, allowing lock-free updates.
+    fn get_or_create_stream(&self, stream_id: usize) -> Arc<PerStreamMeasurements> {
+        let mut streams = self.per_stream.lock();
+
+        // Check if stream already exists
+        if let Some(stream) = streams.iter().find(|s| s.stream_id == stream_id) {
+            return Arc::clone(stream);
+        }
+
+        // Create new stream
+        let stream = Arc::new(PerStreamMeasurements::new(stream_id));
+        streams.push(Arc::clone(&stream));
+        stream
+    }
+
     /// Records bytes sent on a specific stream.
     ///
-    /// Updates both per-stream and total byte counts. Creates a new stream
-    /// entry if the stream ID hasn't been seen before.
+    /// Updates both per-stream and total byte counts using lock-free atomic operations.
+    /// This eliminates lock contention when multiple streams send data in parallel.
     ///
     /// # Arguments
     ///
@@ -619,21 +676,15 @@ impl MeasurementsCollector {
         // Use atomic for total count (lock-free, high performance)
         self.atomic_bytes_sent.fetch_add(bytes, Ordering::Relaxed);
 
-        // Update per-stream stats
-        let mut m = self.inner.lock();
-        if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
-            stream.bytes_sent += bytes;
-        } else {
-            let mut stats = StreamStats::new(stream_id);
-            stats.bytes_sent = bytes;
-            m.streams.push(stats);
-        }
+        // Use atomic for per-stream count (lock-free)
+        let stream = self.get_or_create_stream(stream_id);
+        stream.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
     }
 
     /// Records bytes received on a specific stream.
     ///
-    /// Updates both per-stream and total byte counts. Creates a new stream
-    /// entry if the stream ID hasn't been seen before.
+    /// Updates both per-stream and total byte counts using lock-free atomic operations.
+    /// This eliminates lock contention when multiple streams receive data in parallel.
     ///
     /// # Arguments
     ///
@@ -644,15 +695,9 @@ impl MeasurementsCollector {
         self.atomic_bytes_received
             .fetch_add(bytes, Ordering::Relaxed);
 
-        // Update per-stream stats
-        let mut m = self.inner.lock();
-        if let Some(stream) = m.streams.iter_mut().find(|s| s.stream_id == stream_id) {
-            stream.bytes_received += bytes;
-        } else {
-            let mut stats = StreamStats::new(stream_id);
-            stats.bytes_received = bytes;
-            m.streams.push(stats);
-        }
+        // Use atomic for per-stream count (lock-free)
+        let stream = self.get_or_create_stream(stream_id);
+        stream.bytes_received.fetch_add(bytes, Ordering::Relaxed);
     }
 
     /// Adds an interval measurement.
@@ -674,7 +719,7 @@ impl MeasurementsCollector {
     ///
     /// # Arguments
     ///
-    /// * `_stream_id` - The stream identifier (currently unused)
+    /// * `stream_id` - The stream identifier
     ///
     /// # Performance
     ///
@@ -694,9 +739,13 @@ impl MeasurementsCollector {
     /// let measurements = collector.get();
     /// assert_eq!(measurements.total_packets, 2);
     /// ```
-    pub fn record_udp_packet(&self, _stream_id: usize) {
+    pub fn record_udp_packet(&self, stream_id: usize) {
         // Use atomic for packet count (lock-free, very high frequency operation)
         self.atomic_packets.fetch_add(1, Ordering::Relaxed);
+
+        // Use atomic for per-stream packet count (lock-free)
+        let stream = self.get_or_create_stream(stream_id);
+        stream.packets.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Syncs atomic counters to the internal measurements struct.
@@ -856,6 +905,7 @@ impl MeasurementsCollector {
     /// Returns a snapshot of the current measurements.
     ///
     /// Creates a copy of all collected statistics at the current point in time.
+    /// Syncs all atomic counters (both global and per-stream) into the result.
     ///
     /// # Returns
     ///
@@ -879,6 +929,14 @@ impl MeasurementsCollector {
         m.total_bytes_sent = self.atomic_bytes_sent.load(Ordering::Relaxed);
         m.total_bytes_received = self.atomic_bytes_received.load(Ordering::Relaxed);
         m.total_packets = self.atomic_packets.load(Ordering::Relaxed);
+
+        // Sync per-stream atomic counters
+        let streams = self.per_stream.lock();
+        m.streams.clear();
+        for stream in streams.iter() {
+            m.streams.push(stream.to_stream_stats(m.total_duration));
+        }
+        drop(streams);
 
         // Calculate UDP loss if we received packets
         if m.total_bytes_received > 0 {
