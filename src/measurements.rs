@@ -41,7 +41,7 @@ impl CircularIntervalBuffer {
             intervals: VecDeque::new(),
         }
     }
-    
+
     #[inline]
     fn with_capacity(_capacity: usize) -> Self {
         // Create with reasonable capacity but will grow as needed up to MAX_INTERVALS
@@ -49,7 +49,7 @@ impl CircularIntervalBuffer {
             intervals: VecDeque::with_capacity(_capacity.min(MAX_INTERVALS)),
         }
     }
-    
+
     #[inline]
     fn push_back(&mut self, item: IntervalStats) {
         if self.intervals.len() >= MAX_INTERVALS {
@@ -57,12 +57,12 @@ impl CircularIntervalBuffer {
         }
         self.intervals.push_back(item);
     }
-    
+
     #[inline]
     fn len(&self) -> usize {
         self.intervals.len()
     }
-    
+
     #[inline]
     fn iter(&self) -> std::collections::vec_deque::Iter<'_, IntervalStats> {
         self.intervals.iter()
@@ -119,7 +119,7 @@ impl TcpStats {
     const fn has_flag(&self, flag: u8) -> bool {
         self.flags & flag != 0
     }
-    
+
     #[inline(always)]
     #[allow(dead_code)]
     const fn set_flag(&mut self, flag: u8) {
@@ -261,7 +261,7 @@ impl TcpStats {
             None
         }
     }
-    
+
     #[inline(always)]
     pub const fn rtt_opt(&self) -> Option<u64> {
         if self.has_flag(TCP_RTT_PRESENT) {
@@ -270,7 +270,7 @@ impl TcpStats {
             None
         }
     }
-    
+
     #[inline(always)]
     pub const fn rttvar_opt(&self) -> Option<u64> {
         if self.has_flag(TCP_RTTVAR_PRESENT) {
@@ -279,7 +279,7 @@ impl TcpStats {
             None
         }
     }
-    
+
     #[inline(always)]
     pub const fn pmtu_opt(&self) -> Option<u64> {
         if self.has_flag(TCP_PMTU_PRESENT) {
@@ -1343,7 +1343,7 @@ impl MeasurementsCollector {
             let start = interval.start.as_secs_f64();
             let end = interval.end.as_secs_f64();
             let seconds = (interval.end - interval.start).as_secs_f64();
-            
+
             let stream_stat = DetailedIntervalStats {
                 socket: socket_fd,
                 start,
@@ -1356,7 +1356,7 @@ impl MeasurementsCollector {
                 omitted: false,
                 sender: true,
             };
-            
+
             let sum_stat = DetailedIntervalStats {
                 socket: socket_fd,
                 start,
@@ -1385,12 +1385,16 @@ impl MeasurementsCollector {
     ) -> Vec<IntervalData> {
         let mut intervals = Vec::with_capacity(m.intervals.len());
         for interval in m.intervals.iter() {
-            let packets = if interval.packets == u64::MAX { 0 } else { interval.packets };
+            let packets = if interval.packets == u64::MAX {
+                0
+            } else {
+                interval.packets
+            };
             let socket_fd = connection_info.as_ref().and_then(|c| c.socket_fd);
             let start = interval.start.as_secs_f64();
             let end = interval.end.as_secs_f64();
             let seconds = (interval.end - interval.start).as_secs_f64();
-            
+
             let stream_stat = UdpIntervalStats {
                 socket: socket_fd,
                 start,
@@ -1402,7 +1406,7 @@ impl MeasurementsCollector {
                 omitted: false,
                 sender: true,
             };
-            
+
             let sum_stat = UdpIntervalStats {
                 socket: socket_fd,
                 start,
