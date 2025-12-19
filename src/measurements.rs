@@ -1,8 +1,12 @@
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+const MAX_INTERVALS: usize = 86400; // 24 hours at 1s interval
 
 /// Connection information for a test stream.
 ///
@@ -43,18 +47,165 @@ pub struct SystemInfo {
     pub timestamp_str: String,
 }
 
+const TCP_SND_CWND_PRESENT: u8 = 1 << 0;
+const TCP_RTT_PRESENT: u8 = 1 << 1;
+const TCP_RTTVAR_PRESENT: u8 = 1 << 2;
+const TCP_PMTU_PRESENT: u8 = 1 << 3;
+
+mod option_u64_max {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if *value == u64::MAX {
+            serializer.serialize_none()
+        } else {
+            serializer.serialize_some(value)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt: Option<u64> = Option::deserialize(deserializer)?;
+        Ok(opt.unwrap_or(u64::MAX))
+    }
+}
+
 /// TCP-specific statistics for a measurement interval.
 ///
 /// Contains TCP protocol information collected from the socket during the test.
 /// These statistics are platform-specific and may not be available on all systems.
 /// On Linux, these values are read from `/proc/net/tcp` and socket options.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(from = "TcpStatsDto")]
 pub struct TcpStats {
     pub retransmits: u64,
-    pub snd_cwnd: Option<u64>,
-    pub rtt: Option<u64>,
-    pub rttvar: Option<u64>,
-    pub pmtu: Option<u64>,
+    pub snd_cwnd: u64,
+    pub rtt: u64,
+    pub rttvar: u64,
+    pub pmtu: u64,
+    #[serde(skip)]
+    pub flags: u8,
+}
+
+#[derive(Deserialize)]
+struct TcpStatsDto {
+    #[serde(default)]
+    retransmits: u64,
+    snd_cwnd: Option<u64>,
+    rtt: Option<u64>,
+    rttvar: Option<u64>,
+    pmtu: Option<u64>,
+}
+
+impl From<TcpStatsDto> for TcpStats {
+    fn from(dto: TcpStatsDto) -> Self {
+        let mut flags = 0;
+        let snd_cwnd = if let Some(v) = dto.snd_cwnd {
+            flags |= TCP_SND_CWND_PRESENT;
+            v
+        } else {
+            0
+        };
+        let rtt = if let Some(v) = dto.rtt {
+            flags |= TCP_RTT_PRESENT;
+            v
+        } else {
+            0
+        };
+        let rttvar = if let Some(v) = dto.rttvar {
+            flags |= TCP_RTTVAR_PRESENT;
+            v
+        } else {
+            0
+        };
+        let pmtu = if let Some(v) = dto.pmtu {
+            flags |= TCP_PMTU_PRESENT;
+            v
+        } else {
+            0
+        };
+
+        Self {
+            retransmits: dto.retransmits,
+            snd_cwnd,
+            rtt,
+            rttvar,
+            pmtu,
+            flags,
+        }
+    }
+}
+
+impl Serialize for TcpStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("TcpStats", 5)?;
+        state.serialize_field("retransmits", &self.retransmits)?;
+
+        if self.flags & TCP_SND_CWND_PRESENT != 0 {
+            state.serialize_field("snd_cwnd", &self.snd_cwnd)?;
+        } else {
+            state.serialize_field("snd_cwnd", &None::<u64>)?;
+        }
+
+        if self.flags & TCP_RTT_PRESENT != 0 {
+            state.serialize_field("rtt", &self.rtt)?;
+        } else {
+            state.serialize_field("rtt", &None::<u64>)?;
+        }
+
+        if self.flags & TCP_RTTVAR_PRESENT != 0 {
+            state.serialize_field("rttvar", &self.rttvar)?;
+        } else {
+            state.serialize_field("rttvar", &None::<u64>)?;
+        }
+
+        if self.flags & TCP_PMTU_PRESENT != 0 {
+            state.serialize_field("pmtu", &self.pmtu)?;
+        } else {
+            state.serialize_field("pmtu", &None::<u64>)?;
+        }
+
+        state.end()
+    }
+}
+
+impl TcpStats {
+    pub fn snd_cwnd_opt(&self) -> Option<u64> {
+        if self.flags & TCP_SND_CWND_PRESENT != 0 {
+            Some(self.snd_cwnd)
+        } else {
+            None
+        }
+    }
+    pub fn rtt_opt(&self) -> Option<u64> {
+        if self.flags & TCP_RTT_PRESENT != 0 {
+            Some(self.rtt)
+        } else {
+            None
+        }
+    }
+    pub fn rttvar_opt(&self) -> Option<u64> {
+        if self.flags & TCP_RTTVAR_PRESENT != 0 {
+            Some(self.rttvar)
+        } else {
+            None
+        }
+    }
+    pub fn pmtu_opt(&self) -> Option<u64> {
+        if self.flags & TCP_PMTU_PRESENT != 0 {
+            Some(self.pmtu)
+        } else {
+            None
+        }
+    }
 }
 
 /// UDP-specific statistics for a measurement interval.
@@ -68,8 +219,8 @@ pub struct UdpStats {
     pub lost_packets: u64,
     pub packets: u64,
     pub lost_percent: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub out_of_order: Option<u64>,
+    #[serde(default, with = "option_u64_max")]
+    pub out_of_order: u64,
 }
 
 impl Default for UdpStats {
@@ -79,7 +230,7 @@ impl Default for UdpStats {
             lost_packets: 0,
             packets: 0,
             lost_percent: 0.0,
-            out_of_order: None,
+            out_of_order: u64::MAX,
         }
     }
 }
@@ -351,8 +502,8 @@ pub struct IntervalStats {
     pub end: Duration,
     pub bytes: u64,
     pub bits_per_second: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub packets: Option<u64>,
+    #[serde(default, with = "option_u64_max")]
+    pub packets: u64,
 }
 
 /// Complete test measurements
@@ -394,7 +545,7 @@ pub struct IntervalStats {
 /// ```
 pub struct Measurements {
     pub streams: Vec<StreamStats>,
-    pub intervals: Vec<IntervalStats>,
+    pub intervals: VecDeque<IntervalStats>,
     pub total_bytes_sent: u64,
     pub total_bytes_received: u64,
     pub total_duration: Duration,
@@ -420,7 +571,7 @@ impl Measurements {
     pub fn new() -> Self {
         Self {
             streams: Vec::new(),
-            intervals: Vec::new(),
+            intervals: VecDeque::new(),
             total_bytes_sent: 0,
             total_bytes_received: 0,
             total_duration: Duration::ZERO,
@@ -453,7 +604,7 @@ impl Measurements {
     pub fn with_capacity(expected_streams: usize, expected_intervals: usize) -> Self {
         Self {
             streams: Vec::with_capacity(expected_streams),
-            intervals: Vec::with_capacity(expected_intervals),
+            intervals: VecDeque::with_capacity(expected_intervals),
             total_bytes_sent: 0,
             total_bytes_received: 0,
             total_duration: Duration::ZERO,
@@ -504,7 +655,10 @@ impl Measurements {
     }
 
     pub fn add_interval(&mut self, interval: IntervalStats) {
-        self.intervals.push(interval);
+        if self.intervals.len() >= MAX_INTERVALS {
+            self.intervals.pop_front();
+        }
+        self.intervals.push_back(interval);
     }
 
     pub fn set_duration(&mut self, duration: Duration) {
@@ -1140,7 +1294,11 @@ impl MeasurementsCollector {
                 seconds: (interval.end - interval.start).as_secs_f64(),
                 bytes: interval.bytes,
                 bits_per_second: interval.bits_per_second,
-                packets: interval.packets.unwrap_or(0),
+                packets: if interval.packets == u64::MAX {
+                    0
+                } else {
+                    interval.packets
+                },
                 omitted: false,
                 sender: true,
             };
@@ -1425,10 +1583,10 @@ pub fn get_connection_info(stream: &tokio::net::TcpStream) -> std::io::Result<Co
 /// let stream = TcpStream::connect("127.0.0.1:5201").await?;
 /// let stats = get_tcp_stats(&stream)?;
 ///
-/// if let Some(cwnd) = stats.snd_cwnd {
+/// if let Some(cwnd) = stats.snd_cwnd_opt() {
 ///     println!("Congestion window: {} bytes", cwnd);
 /// }
-/// if let Some(rtt) = stats.rtt {
+/// if let Some(rtt) = stats.rtt_opt() {
 ///     println!("RTT: {} μs", rtt);
 /// }
 /// # Ok(())
@@ -1504,12 +1662,19 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
         // Convert snd_cwnd from segments to bytes by multiplying by MSS
         let snd_cwnd_bytes = (info.snd_cwnd as u64) * (info.snd_mss as u64);
 
+        let mut flags = 0;
+        flags |= TCP_SND_CWND_PRESENT;
+        flags |= TCP_RTT_PRESENT;
+        flags |= TCP_RTTVAR_PRESENT;
+        flags |= TCP_PMTU_PRESENT;
+
         Ok(TcpStats {
             retransmits: info.total_retrans as u64,
-            snd_cwnd: Some(snd_cwnd_bytes),
-            rtt: Some(info.rtt as u64),
-            rttvar: Some(info.rttvar as u64),
-            pmtu: Some(info.pmtu as u64),
+            snd_cwnd: snd_cwnd_bytes,
+            rtt: info.rtt as u64,
+            rttvar: info.rttvar as u64,
+            pmtu: info.pmtu as u64,
+            flags,
         })
     } else {
         Ok(TcpStats::default())

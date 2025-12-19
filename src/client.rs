@@ -894,7 +894,7 @@ impl Client {
                             end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
-                            packets: Some(interval_packets),
+                            packets: interval_packets,
                         });
 
                         // Calculate UDP metrics
@@ -1097,7 +1097,7 @@ impl Client {
                                 end: elapsed,
                                 bytes: interval_bytes,
                                 bits_per_second: bps,
-                                packets: Some(interval_packets),
+                                packets: interval_packets,
                             });
 
                             // Calculate UDP metrics for callback
@@ -1256,7 +1256,7 @@ impl Client {
                             end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
-                            packets: Some(interval_packets),
+                            packets: interval_packets,
                         });
 
                         // Calculate UDP metrics for callback
@@ -1462,13 +1462,13 @@ async fn send_data(
                         end: elapsed,
                         bytes: interval_bytes,
                         bits_per_second: bps,
-                        packets: None,
+                        packets: u64::MAX,
                     });
 
                     // Get congestion window for reporting
                     let cwnd_kbytes = tcp_stats
                         .as_ref()
-                        .and_then(|s| s.snd_cwnd)
+                        .and_then(|s| s.snd_cwnd_opt())
                         .map(|cwnd| cwnd / 1024);
 
                     // Send to reporter task (async, non-blocking)
@@ -1570,7 +1570,7 @@ async fn receive_data(
                         end: elapsed,
                         bytes: interval_bytes,
                         bits_per_second: bps,
-                        packets: None,
+                        packets: u64::MAX,
                     });
 
                     // Send to reporter task (async, non-blocking)

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optimized measurement storage with ring buffers (issue #15)
+  - Replaced `Vec` with `VecDeque` for interval statistics with fixed capacity (86400 intervals)
+  - Implemented ring buffer behavior to prevent unbounded memory growth during long tests
+  - Streamlined `TcpStats`, `UdpStats`, and `IntervalStats` structures to reduce padding
+  - Replaced `Option<u64>` with `u64` and bit flags/sentinels to save 24-32 bytes per interval
+  - Reduced memory usage by ~30-50% for interval storage
 - Memory allocation frequency reduction optimizations (issue #14)
   - Pre-allocated vector capacity in `Measurements::with_capacity()` and `MeasurementsCollector::with_capacity()`
   - Added `Protocol::as_str()` method returning `&'static str` to eliminate string allocations

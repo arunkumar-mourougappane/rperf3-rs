@@ -20,7 +20,7 @@ fn main() {
             end: Duration::from_secs(i + 1),
             bytes: 131768,
             bits_per_second: 1054144.0,
-            packets: Some(91),
+            packets: 91,
         });
     }
 
