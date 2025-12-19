@@ -236,6 +236,10 @@ fn send_mmsg_sync(
     }
 
     // Perform the sendmmsg operation - this is non-blocking (MSG_DONTWAIT)
+    // Note: MSG_DONTWAIT is i32 on gnu libc but u32 on musl libc
+    #[cfg(target_env = "musl")]
+    let ret = unsafe { sendmmsg(fd, msgvec.as_mut_ptr(), count as u32, MSG_DONTWAIT as u32) };
+    #[cfg(not(target_env = "musl"))]
     let ret = unsafe { sendmmsg(fd, msgvec.as_mut_ptr(), count as u32, MSG_DONTWAIT) };
 
     if ret < 0 {
@@ -477,6 +481,18 @@ fn recv_mmsg_sync(
     }
 
     // Perform the recvmmsg operation
+    // Note: MSG_DONTWAIT is i32 on gnu libc but u32 on musl libc
+    #[cfg(target_env = "musl")]
+    let ret = unsafe {
+        recvmmsg(
+            fd,
+            msgvec.as_mut_ptr(),
+            count as u32,
+            MSG_DONTWAIT as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    #[cfg(not(target_env = "musl"))]
     let ret = unsafe {
         recvmmsg(
             fd,
