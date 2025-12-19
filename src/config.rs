@@ -29,6 +29,32 @@ pub enum Protocol {
     Udp,
 }
 
+impl Protocol {
+    /// Returns the protocol name as a static string.
+    ///
+    /// This avoids memory allocation when converting protocol to string,
+    /// providing a performance optimization over `format!("{:?}", protocol)`.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice containing the protocol name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::Protocol;
+    ///
+    /// assert_eq!(Protocol::Tcp.as_str(), "Tcp");
+    /// assert_eq!(Protocol::Udp.as_str(), "Udp");
+    /// ```
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Protocol::Tcp => "Tcp",
+            Protocol::Udp => "Udp",
+        }
+    }
+}
+
 /// Test mode: client or server.
 ///
 /// Determines whether this instance acts as a server (listening for connections)

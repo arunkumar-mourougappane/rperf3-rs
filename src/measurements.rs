@@ -432,6 +432,39 @@ impl Measurements {
         }
     }
 
+    /// Creates a new measurements collection with pre-allocated capacity.
+    ///
+    /// Pre-allocating capacity reduces memory allocations during test execution.
+    /// Use this when you know the expected number of streams and intervals.
+    ///
+    /// # Arguments
+    ///
+    /// * `expected_streams` - Expected number of parallel streams
+    /// * `expected_intervals` - Expected number of interval reports
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::Measurements;
+    ///
+    /// // For a 10-second test with 1-second intervals and 4 streams
+    /// let measurements = Measurements::with_capacity(4, 10);
+    /// ```
+    pub fn with_capacity(expected_streams: usize, expected_intervals: usize) -> Self {
+        Self {
+            streams: Vec::with_capacity(expected_streams),
+            intervals: Vec::with_capacity(expected_intervals),
+            total_bytes_sent: 0,
+            total_bytes_received: 0,
+            total_duration: Duration::ZERO,
+            total_packets: 0,
+            lost_packets: 0,
+            out_of_order_packets: 0,
+            jitter_ms: 0.0,
+            start_time: None,
+        }
+    }
+
     /// Calculates the average throughput in bits per second.
     ///
     /// Returns the total throughput based on both bytes sent and received,
@@ -631,6 +664,38 @@ impl MeasurementsCollector {
             inner: Arc::new(Mutex::new(Measurements::new())),
             udp_state: Arc::new(Mutex::new(UdpPacketState::default())),
             per_stream: Arc::new(Mutex::new(Vec::new())),
+            atomic_bytes_sent: Arc::new(AtomicU64::new(0)),
+            atomic_bytes_received: Arc::new(AtomicU64::new(0)),
+            atomic_packets: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Creates a new measurements collector with pre-allocated capacity.
+    ///
+    /// Pre-allocates capacity for measurements to reduce allocations during test execution.
+    /// This is particularly beneficial for tests with known parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `expected_streams` - Expected number of parallel streams
+    /// * `expected_intervals` - Expected number of interval reports
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rperf3::measurements::MeasurementsCollector;
+    ///
+    /// // For a 30-second test with 1-second intervals and 4 streams
+    /// let collector = MeasurementsCollector::with_capacity(4, 30);
+    /// ```
+    pub fn with_capacity(expected_streams: usize, expected_intervals: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Measurements::with_capacity(
+                expected_streams,
+                expected_intervals,
+            ))),
+            udp_state: Arc::new(Mutex::new(UdpPacketState::default())),
+            per_stream: Arc::new(Mutex::new(Vec::with_capacity(expected_streams))),
             atomic_bytes_sent: Arc::new(AtomicU64::new(0)),
             atomic_bytes_received: Arc::new(AtomicU64::new(0)),
             atomic_packets: Arc::new(AtomicU64::new(0)),
@@ -1038,7 +1103,7 @@ impl MeasurementsCollector {
         m: &Measurements,
         connection_info: &Option<ConnectionInfo>,
     ) -> Vec<IntervalData> {
-        let mut intervals = Vec::new();
+        let mut intervals = Vec::with_capacity(m.intervals.len());
         for interval in &m.intervals {
             let stream_stat = DetailedIntervalStats {
                 socket: connection_info.as_ref().and_then(|c| c.socket_fd),
@@ -1066,7 +1131,7 @@ impl MeasurementsCollector {
         m: &Measurements,
         connection_info: &Option<ConnectionInfo>,
     ) -> Vec<IntervalData> {
-        let mut intervals = Vec::new();
+        let mut intervals = Vec::with_capacity(m.intervals.len());
         for interval in &m.intervals {
             let stream_stat = UdpIntervalStats {
                 socket: connection_info.as_ref().and_then(|c| c.socket_fd),
