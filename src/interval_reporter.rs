@@ -4,7 +4,9 @@
 //! moving the formatting and I/O overhead out of the critical data path.
 //! This improves throughput by 5-10% during high-throughput tests.
 
+use crate::client::ProgressCallback;
 use crate::ProgressEvent;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -64,19 +66,17 @@ impl IntervalReporter {
 ///
 /// This task handles all interval reporting asynchronously, formatting output
 /// and invoking callbacks without blocking the data path.
-pub async fn run_reporter_task<F>(
+pub async fn run_reporter_task(
     mut receiver: mpsc::UnboundedReceiver<IntervalMessage>,
     json_mode: bool,
-    callback: Option<F>,
-) where
-    F: Fn(ProgressEvent) + Send + 'static,
-{
+    callback: Option<Arc<dyn ProgressCallback>>,
+) {
     while let Some(msg) = receiver.recv().await {
         match msg {
             IntervalMessage::Report(report) => {
                 // Invoke callback if present
                 if let Some(ref cb) = callback {
-                    cb(ProgressEvent::IntervalUpdate {
+                    let event = ProgressEvent::IntervalUpdate {
                         interval_start: report.interval_start,
                         interval_end: report.interval_end,
                         bytes: report.bytes,
@@ -86,7 +86,8 @@ pub async fn run_reporter_task<F>(
                         lost_packets: report.lost_packets,
                         lost_percent: report.lost_percent,
                         retransmits: report.retransmits,
-                    });
+                    };
+                    cb.on_progress(event);
                 }
 
                 // Print formatted output if not in JSON mode
