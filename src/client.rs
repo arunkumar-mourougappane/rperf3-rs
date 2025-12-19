@@ -1469,25 +1469,6 @@ async fn send_data(
                         packets: None,
                     });
 
-                    // Notify callback
-                    if let Some(cb) = callback {
-                        cb.on_progress(ProgressEvent::IntervalUpdate {
-                            interval_start,
-                            interval_end: elapsed,
-                            bytes: interval_bytes,
-                            bits_per_second: bps,
-                            packets: None,
-                            jitter_ms: None,
-                            lost_packets: None,
-                            lost_percent: None,
-                            retransmits: if interval_retransmits > 0 {
-                                Some(interval_retransmits)
-                            } else {
-                                None
-                            },
-                        });
-                    }
-
                     // Get congestion window for reporting
                     let cwnd_kbytes = tcp_stats
                         .as_ref()
@@ -1599,25 +1580,6 @@ async fn receive_data(
                         bits_per_second: bps,
                         packets: None,
                     });
-
-                    // Notify callback
-                    if let Some(cb) = callback {
-                        cb.on_progress(ProgressEvent::IntervalUpdate {
-                            interval_start,
-                            interval_end: elapsed,
-                            bytes: interval_bytes,
-                            bits_per_second: bps,
-                            packets: None,
-                            jitter_ms: None,
-                            lost_packets: None,
-                            lost_percent: None,
-                            retransmits: if interval_retransmits > 0 {
-                                Some(interval_retransmits)
-                            } else {
-                                None
-                            },
-                        });
-                    }
 
                     // Send to reporter task (async, non-blocking)
                     reporter.report(IntervalReport {
