@@ -814,13 +814,8 @@ async fn send_udp_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    // Create async interval reporter
-    let (reporter, receiver) = IntervalReporter::new();
-    let reporter_task = tokio::spawn(run_reporter_task(
-        receiver,
-        config.json,
-        None, // Server doesn't have callbacks
-    ));
+    // Note: In UDP reverse mode, only the client prints interval reports.
+    // The server just tracks measurements for the final summary.
 
     // Bind to the server's configured port for UDP
     let bind_addr = format!("0.0.0.0:{}", config.port);
@@ -891,7 +886,7 @@ async fn send_udp_data(
                     }
                 }
 
-                // Report interval
+                // Track interval stats internally (no printing on server side for reverse mode)
                 if last_interval.elapsed() >= config.interval {
                     let elapsed = start.elapsed();
                     let interval_duration = last_interval.elapsed();
@@ -911,21 +906,6 @@ async fn send_udp_data(
                         packets: Some(interval_packets),
                     });
 
-                    // Send to reporter task (async, non-blocking)
-                    reporter.report(IntervalReport {
-                        stream_id: DEFAULT_STREAM_ID,
-                        interval_start,
-                        interval_end: elapsed,
-                        bytes: interval_bytes,
-                        bits_per_second: bps,
-                        packets: Some(interval_packets),
-                        jitter_ms: None,
-                        lost_packets: None,
-                        lost_percent: None,
-                        retransmits: None,
-                        cwnd: None,
-                    });
-
                     interval_bytes = 0;
                     interval_packets = 0;
                     last_interval = Instant::now();
@@ -937,10 +917,6 @@ async fn send_udp_data(
             }
         }
     }
-
-    // Signal reporter completion and wait for it to finish
-    reporter.complete();
-    let _ = reporter_task.await;
 
     measurements.set_duration(start.elapsed());
     Ok(())
