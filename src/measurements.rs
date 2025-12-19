@@ -6,7 +6,68 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const MAX_INTERVALS: usize = 86400; // 24 hours at 1s interval
+const MAX_INTERVALS: usize = if cfg!(test) { 100 } else { 86400 }; // Smaller for tests, 24 hours at 1s interval for production
+
+/// Bounded interval buffer that prevents unbounded memory growth.
+/// Uses VecDeque with MAX_INTERVALS capacity limit for better test compatibility.
+#[derive(Debug, Clone)]
+pub struct CircularIntervalBuffer {
+    intervals: VecDeque<IntervalStats>,
+}
+
+impl Serialize for CircularIntervalBuffer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.intervals.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CircularIntervalBuffer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let intervals: VecDeque<IntervalStats> = VecDeque::deserialize(deserializer)?;
+        Ok(Self { intervals })
+    }
+}
+
+impl CircularIntervalBuffer {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            intervals: VecDeque::new(),
+        }
+    }
+    
+    #[inline]
+    fn with_capacity(_capacity: usize) -> Self {
+        // Create with reasonable capacity but will grow as needed up to MAX_INTERVALS
+        Self {
+            intervals: VecDeque::with_capacity(_capacity.min(MAX_INTERVALS)),
+        }
+    }
+    
+    #[inline]
+    fn push_back(&mut self, item: IntervalStats) {
+        if self.intervals.len() >= MAX_INTERVALS {
+            self.intervals.pop_front(); // Remove oldest when at capacity
+        }
+        self.intervals.push_back(item);
+    }
+    
+    #[inline]
+    fn len(&self) -> usize {
+        self.intervals.len()
+    }
+    
+    #[inline]
+    fn iter(&self) -> std::collections::vec_deque::Iter<'_, IntervalStats> {
+        self.intervals.iter()
+    }
+}
 
 /// Connection information for a test stream.
 ///
@@ -51,6 +112,20 @@ const TCP_SND_CWND_PRESENT: u8 = 1 << 0;
 const TCP_RTT_PRESENT: u8 = 1 << 1;
 const TCP_RTTVAR_PRESENT: u8 = 1 << 2;
 const TCP_PMTU_PRESENT: u8 = 1 << 3;
+
+/// Const helper functions for bit flag operations
+impl TcpStats {
+    #[inline(always)]
+    const fn has_flag(&self, flag: u8) -> bool {
+        self.flags & flag != 0
+    }
+    
+    #[inline(always)]
+    #[allow(dead_code)]
+    const fn set_flag(&mut self, flag: u8) {
+        self.flags |= flag;
+    }
+}
 
 mod option_u64_max {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -178,29 +253,36 @@ impl Serialize for TcpStats {
 }
 
 impl TcpStats {
-    pub fn snd_cwnd_opt(&self) -> Option<u64> {
-        if self.flags & TCP_SND_CWND_PRESENT != 0 {
+    #[inline(always)]
+    pub const fn snd_cwnd_opt(&self) -> Option<u64> {
+        if self.has_flag(TCP_SND_CWND_PRESENT) {
             Some(self.snd_cwnd)
         } else {
             None
         }
     }
-    pub fn rtt_opt(&self) -> Option<u64> {
-        if self.flags & TCP_RTT_PRESENT != 0 {
+    
+    #[inline(always)]
+    pub const fn rtt_opt(&self) -> Option<u64> {
+        if self.has_flag(TCP_RTT_PRESENT) {
             Some(self.rtt)
         } else {
             None
         }
     }
-    pub fn rttvar_opt(&self) -> Option<u64> {
-        if self.flags & TCP_RTTVAR_PRESENT != 0 {
+    
+    #[inline(always)]
+    pub const fn rttvar_opt(&self) -> Option<u64> {
+        if self.has_flag(TCP_RTTVAR_PRESENT) {
             Some(self.rttvar)
         } else {
             None
         }
     }
-    pub fn pmtu_opt(&self) -> Option<u64> {
-        if self.flags & TCP_PMTU_PRESENT != 0 {
+    
+    #[inline(always)]
+    pub const fn pmtu_opt(&self) -> Option<u64> {
+        if self.has_flag(TCP_PMTU_PRESENT) {
             Some(self.pmtu)
         } else {
             None
@@ -545,7 +627,7 @@ pub struct IntervalStats {
 /// ```
 pub struct Measurements {
     pub streams: Vec<StreamStats>,
-    pub intervals: VecDeque<IntervalStats>,
+    pub intervals: CircularIntervalBuffer,
     pub total_bytes_sent: u64,
     pub total_bytes_received: u64,
     pub total_duration: Duration,
@@ -571,7 +653,7 @@ impl Measurements {
     pub fn new() -> Self {
         Self {
             streams: Vec::new(),
-            intervals: VecDeque::new(),
+            intervals: CircularIntervalBuffer::new(),
             total_bytes_sent: 0,
             total_bytes_received: 0,
             total_duration: Duration::ZERO,
@@ -604,7 +686,7 @@ impl Measurements {
     pub fn with_capacity(expected_streams: usize, expected_intervals: usize) -> Self {
         Self {
             streams: Vec::with_capacity(expected_streams),
-            intervals: VecDeque::with_capacity(expected_intervals),
+            intervals: CircularIntervalBuffer::with_capacity(expected_intervals),
             total_bytes_sent: 0,
             total_bytes_received: 0,
             total_duration: Duration::ZERO,
@@ -654,10 +736,8 @@ impl Measurements {
         self.streams.push(stats);
     }
 
+    #[inline]
     pub fn add_interval(&mut self, interval: IntervalStats) {
-        if self.intervals.len() >= MAX_INTERVALS {
-            self.intervals.pop_front();
-        }
         self.intervals.push_back(interval);
     }
 
@@ -1258,12 +1338,30 @@ impl MeasurementsCollector {
         connection_info: &Option<ConnectionInfo>,
     ) -> Vec<IntervalData> {
         let mut intervals = Vec::with_capacity(m.intervals.len());
-        for interval in &m.intervals {
+        for interval in m.intervals.iter() {
+            let socket_fd = connection_info.as_ref().and_then(|c| c.socket_fd);
+            let start = interval.start.as_secs_f64();
+            let end = interval.end.as_secs_f64();
+            let seconds = (interval.end - interval.start).as_secs_f64();
+            
             let stream_stat = DetailedIntervalStats {
-                socket: connection_info.as_ref().and_then(|c| c.socket_fd),
-                start: interval.start.as_secs_f64(),
-                end: interval.end.as_secs_f64(),
-                seconds: (interval.end - interval.start).as_secs_f64(),
+                socket: socket_fd,
+                start,
+                end,
+                seconds,
+                bytes: interval.bytes,
+                bits_per_second: interval.bits_per_second,
+                tcp_stats: TcpStats::default(),
+                packets: None,
+                omitted: false,
+                sender: true,
+            };
+            
+            let sum_stat = DetailedIntervalStats {
+                socket: socket_fd,
+                start,
+                end,
+                seconds,
                 bytes: interval.bytes,
                 bits_per_second: interval.bits_per_second,
                 tcp_stats: TcpStats::default(),
@@ -1273,8 +1371,8 @@ impl MeasurementsCollector {
             };
 
             intervals.push(IntervalData::Tcp {
-                streams: vec![stream_stat.clone()],
-                sum: stream_stat,
+                streams: vec![stream_stat],
+                sum: sum_stat,
             });
         }
         intervals
@@ -1286,26 +1384,40 @@ impl MeasurementsCollector {
         connection_info: &Option<ConnectionInfo>,
     ) -> Vec<IntervalData> {
         let mut intervals = Vec::with_capacity(m.intervals.len());
-        for interval in &m.intervals {
+        for interval in m.intervals.iter() {
+            let packets = if interval.packets == u64::MAX { 0 } else { interval.packets };
+            let socket_fd = connection_info.as_ref().and_then(|c| c.socket_fd);
+            let start = interval.start.as_secs_f64();
+            let end = interval.end.as_secs_f64();
+            let seconds = (interval.end - interval.start).as_secs_f64();
+            
             let stream_stat = UdpIntervalStats {
-                socket: connection_info.as_ref().and_then(|c| c.socket_fd),
-                start: interval.start.as_secs_f64(),
-                end: interval.end.as_secs_f64(),
-                seconds: (interval.end - interval.start).as_secs_f64(),
+                socket: socket_fd,
+                start,
+                end,
+                seconds,
                 bytes: interval.bytes,
                 bits_per_second: interval.bits_per_second,
-                packets: if interval.packets == u64::MAX {
-                    0
-                } else {
-                    interval.packets
-                },
+                packets,
+                omitted: false,
+                sender: true,
+            };
+            
+            let sum_stat = UdpIntervalStats {
+                socket: socket_fd,
+                start,
+                end,
+                seconds,
+                bytes: interval.bytes,
+                bits_per_second: interval.bits_per_second,
+                packets,
                 omitted: false,
                 sender: true,
             };
 
             intervals.push(IntervalData::Udp {
-                streams: vec![stream_stat.clone()],
-                sum: stream_stat,
+                streams: vec![stream_stat],
+                sum: sum_stat,
             });
         }
         intervals
