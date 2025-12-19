@@ -1,5 +1,5 @@
 use crate::buffer_pool::BufferPool;
-use crate::config::{Config, Protocol};
+use crate::config::Config;
 use crate::interval_reporter::{run_reporter_task, IntervalReport, IntervalReporter};
 use crate::measurements::{get_tcp_stats, IntervalStats, MeasurementsCollector};
 use crate::protocol::{deserialize_message, serialize_message, Message, DEFAULT_STREAM_ID};
@@ -113,15 +113,19 @@ fn configure_udp_socket(socket: &UdpSocket) -> Result<()> {
 
 /// Network performance test server.
 ///
-/// The `Server` listens for incoming client connections and handles performance
-/// test requests. It supports both TCP and UDP protocols, reverse mode testing,
-/// bandwidth limiting, and can handle multiple concurrent clients.
+/// The `Server` listens for incoming TCP control connections and handles both TCP and UDP
+/// performance test requests. All tests use a TCP control channel for coordination, with
+/// UDP data transfer happening on the same port. The server supports reverse mode testing,
+/// bandwidth limiting, interval reporting, JSON output, and can handle multiple concurrent clients.
 ///
 /// # Features
 ///
-/// - **TCP and UDP**: Handle both reliable (TCP) and unreliable (UDP) protocol tests
+/// - **TCP Control Channel**: Always uses TCP for client coordination
+/// - **TCP and UDP Data**: Handle both reliable (TCP) and unreliable (UDP) performance tests
 /// - **Reverse Mode**: Send data to client for reverse throughput testing
 /// - **Bandwidth Limiting**: Control send rate in reverse mode tests
+/// - **Interval Reporting**: Display periodic statistics during tests
+/// - **JSON Output**: Machine-readable output format for automation
 /// - **UDP Metrics**: Track packet loss, jitter, and out-of-order delivery
 /// - **Concurrent Clients**: Handle multiple simultaneous test connections
 ///
@@ -269,10 +273,10 @@ impl Server {
 
         info!("Starting rperf3 server on {}", bind_addr);
 
-        match self.config.protocol {
-            Protocol::Tcp => self.run_tcp(&bind_addr).await,
-            Protocol::Udp => self.run_udp(&bind_addr).await,
-        }
+        // Server always uses TCP for control connections
+        // The protocol config is just for display/logging purposes
+        // Both TCP and UDP tests are handled via the TCP control channel
+        self.run_tcp(&bind_addr).await
     }
 
     async fn run_tcp(&self, bind_addr: &str) -> Result<()> {
@@ -325,6 +329,7 @@ impl Server {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn run_udp(&self, bind_addr: &str) -> Result<()> {
         let socket = UdpSocket::bind(bind_addr).await?;
         let local_addr = socket.local_addr()?;
@@ -455,6 +460,7 @@ impl Server {
     }
 
     /// Batched UDP receive implementation using recvmmsg (Linux only)
+    #[allow(dead_code)]
     #[cfg(target_os = "linux")]
     async fn run_udp_batched(&self, socket: UdpSocket) -> Result<()> {
         use crate::batch_socket::UdpRecvBatch;

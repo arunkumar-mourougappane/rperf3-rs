@@ -72,9 +72,14 @@ mod tests {
 #[command(name = "rperf3")]
 #[command(author, version, about = "Network performance measurement tool", long_about = None)]
 #[command(after_help = "EXAMPLES:
-    Start server:
+    Start TCP server:
         rperf3 server
         rperf3 server --port 5201 --bind 192.168.1.100
+        rperf3 server -p 5201 -J --interval 2
+
+    Start UDP server:
+        rperf3 server --udp
+        rperf3 server -u -J -i 2
 
     Run TCP test:
         rperf3 client 192.168.1.100
@@ -87,6 +92,10 @@ mod tests {
     Reverse mode (server sends):
         rperf3 client 192.168.1.100 --reverse
         rperf3 client 192.168.1.100 -R -b 500M
+
+    JSON output:
+        rperf3 server --json
+        rperf3 client 192.168.1.100 -J
 
 BANDWIDTH NOTATION:
     K = Kilobits (1,000 bits/sec)     Example: 500K = 500 Kbps
@@ -110,9 +119,17 @@ enum Commands {
         #[arg(short, long, value_name = "ADDRESS")]
         bind: Option<String>,
 
-        /// Use UDP protocol instead of TCP
+        /// Set default protocol to UDP (server accepts both TCP and UDP tests)
         #[arg(short, long)]
         udp: bool,
+
+        /// Output results in JSON format for machine parsing
+        #[arg(short = 'J', long)]
+        json: bool,
+
+        /// Interval between periodic reports in seconds [default: 1]
+        #[arg(short, long, value_name = "SECONDS", default_value = "1")]
+        interval: u64,
     },
 
     /// Start client mode and connect to a server
@@ -173,10 +190,19 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Server { port, bind, udp } => {
+        Commands::Server {
+            port,
+            bind,
+            udp,
+            json,
+            interval,
+        } => {
             let protocol = if udp { Protocol::Udp } else { Protocol::Tcp };
 
-            let mut config = Config::server(port).with_protocol(protocol);
+            let mut config = Config::server(port)
+                .with_protocol(protocol)
+                .with_json(json)
+                .with_interval(Duration::from_secs(interval));
 
             if let Some(bind_addr) = bind {
                 config.bind_addr = Some(bind_addr.parse()?);

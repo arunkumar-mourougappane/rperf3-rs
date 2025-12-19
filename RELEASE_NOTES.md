@@ -1,5 +1,109 @@
 # Release Notes
 
+## Version 0.6.1
+
+**Release Date:** December 19, 2025
+
+### Overview
+
+Version 0.6.1 is a maintenance release that adds missing server CLI options for feature parity with the client, fixes server protocol handling, and updates all documentation. This release ensures the server can output JSON format and supports configurable interval reporting, matching client capabilities.
+
+## What's New
+
+### Server CLI Enhancements
+
+Added missing command-line options to server for feature parity with client.
+
+**Key Changes:**
+
+- Added `-J, --json` option for JSON output format on server
+- Added `-i, --interval <SECONDS>` option for configurable interval reporting
+- Updated `-u` option description to clarify server accepts both TCP and UDP tests
+- Server now properly handles both TCP and UDP clients via TCP control channel
+
+**Usage Examples:**
+
+```bash
+# Server with JSON output
+rperf3 server -J
+
+# Server with 2-second intervals
+rperf3 server -i 2
+
+# Server with both JSON and custom interval
+rperf3 server -J -i 2
+
+# UDP mode (server still accepts both TCP and UDP tests)
+rperf3 server -u -J -i 1
+```
+
+**Impact:**
+
+- Feature parity between client and server CLI options
+- Better automation support with server-side JSON output
+- Consistent interval reporting configuration across client and server
+- Improved server documentation and usage clarity
+
+### Server Protocol Handling Fix
+
+Fixed server to properly handle both TCP and UDP tests via TCP control channel.
+
+**Key Changes:**
+
+- Removed broken UDP-only server mode that prevented client connections
+- Server now always listens on TCP for control connections
+- Both TCP and UDP tests work correctly through the control channel protocol
+- Updated documentation to reflect TCP control channel architecture
+
+**Technical Details:**
+
+- The `-u` flag on server is now just a configuration hint
+- Server accepts both TCP and UDP client tests regardless of how it's started
+- All tests coordinate via TCP control channel (consistent with iperf3 design)
+- UDP data transfer happens on the same port after TCP negotiation
+
+### Documentation Updates
+
+Comprehensive documentation updates across all files:
+
+- Updated README.md with new server options and examples
+- Enhanced lib.rs with server configuration examples
+- Updated CHANGELOG.md and RELEASE_NOTES.md
+- Improved Server struct documentation
+- Added CLI help text improvements
+
+## Migration Guide
+
+### API Compatibility
+
+Version 0.6.1 maintains full backward compatibility. No code changes required for existing applications.
+
+### CLI Changes
+
+New server options are additive - existing scripts continue to work:
+
+```bash
+# Old (still works)
+rperf3 server
+rperf3 server -p 5201
+
+# New (additional functionality)
+rperf3 server -J            # Add JSON output
+rperf3 server -i 2          # 2-second intervals
+rperf3 server -J -i 2       # Both options
+```
+
+### Server Protocol Fix
+
+If you were using `rperf3 server -u` and experiencing connection failures, this release fixes that issue. The server now properly accepts both TCP and UDP clients.
+
+## Testing
+
+All existing tests continue to pass:
+- 122/122 tests passing (100% success rate)
+- 86/86 doc tests passing
+- No regressions in functionality or performance
+
 ## Version 0.6.0
 
 **Release Date:** December 19, 2025

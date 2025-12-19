@@ -1,6 +1,6 @@
 [package]
 name = "rperf3-rs"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
 description = "High-performance network throughput measurement tool, inspired by iperf3."

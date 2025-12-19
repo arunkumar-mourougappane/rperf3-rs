@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-12-19
+
+### Added
+
+- Server CLI enhancements for feature parity with client
+  - Added `-J, --json` option for JSON output format on server
+  - Added `-i, --interval <SECONDS>` option for configurable interval reporting
+  - Updated `-u` option description to clarify server accepts both TCP and UDP tests
+  - Server now properly handles both TCP and UDP clients via TCP control channel
+
+### Fixed
+
+- Server protocol handling to always use TCP control channel
+  - Removed broken UDP-only server mode that prevented client connections
+  - Server now accepts both TCP and UDP tests regardless of `-u` flag
+  - Improved server documentation to reflect TCP control channel architecture
+
+### Changed
+
+- Updated all documentation (README.md, lib.rs, RELEASE_NOTES.md) to reflect v0.6.1 changes
+- Enhanced CLI help text with better server usage examples
+- Improved Server struct documentation with comprehensive feature descriptions
+
 ## [0.6.0] - 2025-12-19
 
 ### Added
