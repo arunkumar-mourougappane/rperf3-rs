@@ -14,7 +14,7 @@ fn main() {
         end: Duration::from_secs(1),
         bytes: 1000000000,
         bits_per_second: 8000000000.0,
-        packets: None,
+        packets: u64::MAX,
     });
     collector.set_duration(Duration::from_secs(3));
 

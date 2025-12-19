@@ -409,7 +409,7 @@ impl Server {
                             end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
-                            packets: Some(interval_packets),
+                            packets: interval_packets,
                         });
 
                         // Calculate UDP metrics
@@ -544,7 +544,7 @@ impl Server {
                             end: elapsed,
                             bytes: interval_bytes,
                             bits_per_second: bps,
-                            packets: Some(interval_packets),
+                            packets: interval_packets,
                         });
 
                         // Calculate UDP metrics
@@ -903,7 +903,7 @@ async fn send_udp_data(
                         end: elapsed,
                         bytes: interval_bytes,
                         bits_per_second: bps,
-                        packets: Some(interval_packets),
+                        packets: interval_packets,
                     });
 
                     interval_bytes = 0;
@@ -1058,13 +1058,13 @@ async fn send_data(
                         end: elapsed,
                         bytes: interval_bytes,
                         bits_per_second: bps,
-                        packets: None,
+                        packets: u64::MAX,
                     });
 
                     // Get congestion window for reporting
                     let cwnd_kbytes = tcp_stats
                         .as_ref()
-                        .and_then(|s| s.snd_cwnd)
+                        .and_then(|s| s.snd_cwnd_opt())
                         .map(|cwnd| cwnd / 1024);
 
                     // Send to reporter task (async, non-blocking)
@@ -1163,7 +1163,7 @@ async fn receive_data(
                         end: elapsed,
                         bytes: interval_bytes,
                         bits_per_second: bps,
-                        packets: None,
+                        packets: u64::MAX,
                     });
 
                     // Send to reporter task (async, non-blocking)
