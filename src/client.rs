@@ -561,7 +561,7 @@ impl Client {
 
         // Send setup message
         let setup = Message::setup(
-            format!("{:?}", self.config.protocol),
+            self.config.protocol.as_str().to_string(),
             self.config.duration,
             self.config.bandwidth,
             self.config.buffer_size,
@@ -705,7 +705,7 @@ impl Client {
         } else {
             // Use detailed results for JSON output
             let test_config = TestConfig {
-                protocol: format!("{:?}", self.config.protocol),
+                protocol: self.config.protocol.as_str().to_string(),
                 num_streams: self.config.parallel,
                 blksize: self.config.buffer_size,
                 omit: 0,
@@ -732,7 +732,7 @@ impl Client {
 
         // Send setup message via TCP
         let setup = Message::setup(
-            format!("{:?}", self.config.protocol),
+            self.config.protocol.as_str().to_string(),
             self.config.duration,
             self.config.bandwidth,
             self.config.buffer_size,
@@ -969,7 +969,7 @@ impl Client {
             // Use detailed results for JSON output
             let system_info = Some(get_system_info());
             let test_config = TestConfig {
-                protocol: format!("{:?}", self.config.protocol),
+                protocol: self.config.protocol.as_str().to_string(),
                 num_streams: self.config.parallel,
                 blksize: self.config.buffer_size,
                 omit: 0,
@@ -1172,7 +1172,7 @@ impl Client {
             // Use detailed results for JSON output
             let system_info = Some(get_system_info());
             let test_config = TestConfig {
-                protocol: format!("{:?}", self.config.protocol),
+                protocol: self.config.protocol.as_str().to_string(),
                 num_streams: self.config.parallel,
                 blksize: self.config.buffer_size,
                 omit: 0,
@@ -1334,7 +1334,7 @@ impl Client {
             // Use detailed results for JSON output
             let system_info = Some(get_system_info());
             let test_config = TestConfig {
-                protocol: format!("{:?}", self.config.protocol),
+                protocol: self.config.protocol.as_str().to_string(),
                 num_streams: self.config.parallel,
                 blksize: self.config.buffer_size,
                 omit: 0,

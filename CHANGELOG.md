@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Memory allocation frequency reduction optimizations (issue #14)
+  - Pre-allocated vector capacity in `Measurements::with_capacity()` and `MeasurementsCollector::with_capacity()`
+  - Added `Protocol::as_str()` method returning `&'static str` to eliminate string allocations
+  - Optimized `build_tcp_intervals()` and `build_udp_intervals()` to use `Vec::with_capacity()`
+  - Replaced all `format!("{:?}", protocol)` calls with efficient static string method
+  - Reduces memory pressure and GC overhead during test execution
+  - Significant reduction in heap allocations for interval statistics and logging
 - Per-stream atomic measurements to reduce lock contention (issue #19)
   - New `PerStreamMeasurements` struct with atomic counters per stream
   - Lock-free updates for bytes sent/received/packets on individual streams
