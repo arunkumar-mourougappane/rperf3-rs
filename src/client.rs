@@ -1,5 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
+use crate::interval_reporter::{IntervalReport, IntervalReporter, run_reporter_task};
 use crate::measurements::{
     get_connection_info, get_system_info, get_tcp_stats, IntervalStats, MeasurementsCollector,
     TestConfig,
@@ -827,6 +828,19 @@ impl Client {
     /// Standard UDP send implementation (one packet per system call)
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     async fn run_udp_send_standard(&self, socket: UdpSocket) -> Result<()> {
+        // Create interval reporter and spawn reporting task
+        let (reporter, receiver) = IntervalReporter::new();
+        let json_mode = self.config.json;
+        let callback_clone = self.callback.clone();
+        let reporter_task = tokio::spawn(async move {
+            run_reporter_task(
+                receiver,
+                json_mode,
+                callback_clone.map(|cb| move |event| cb.on_progress(event)),
+            )
+            .await;
+        });
+
         let start = Instant::now();
         let mut last_interval = start;
         let mut interval_bytes = 0u64;
@@ -888,7 +902,7 @@ impl Client {
                             packets: Some(interval_packets),
                         });
 
-                        // Calculate UDP metrics for callback
+                        // Calculate UDP metrics
                         let (lost, expected) = self.measurements.calculate_udp_loss();
                         let loss_percent = if expected > 0 {
                             (lost as f64 / expected as f64) * 100.0
@@ -897,8 +911,9 @@ impl Client {
                         };
                         let measurements = self.measurements.get();
 
-                        // Notify callback
-                        self.notify(ProgressEvent::IntervalUpdate {
+                        // Send to reporter task (async, non-blocking)
+                        reporter.report(IntervalReport {
+                            stream_id: self.stream_id,
                             interval_start,
                             interval_end: elapsed,
                             bytes: interval_bytes,
@@ -908,30 +923,9 @@ impl Client {
                             lost_packets: Some(lost),
                             lost_percent: Some(loss_percent),
                             retransmits: None,
+                            cwnd: None,
                         });
 
-                        if !self.config.json {
-                            // Format bytes as KBytes or MBytes
-                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
-                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
-                            } else {
-                                (interval_bytes as f64 / 1_000.0, "KBytes")
-                            };
-
-                            // Format bitrate as Mbits/sec
-                            let bitrate_val = bps / 1_000_000.0;
-
-                            println!(
-                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
-                                self.stream_id,
-                                interval_start.as_secs_f64(),
-                                elapsed.as_secs_f64(),
-                                transfer_val,
-                                transfer_unit,
-                                bitrate_val,
-                                interval_packets
-                            );
-                        }
                         interval_bytes = 0;
                         interval_packets = 0;
                         last_interval = Instant::now();
@@ -943,6 +937,11 @@ impl Client {
                 }
             }
         }
+
+        // Signal reporter task to complete
+        reporter.complete();
+        // Wait for reporter task to finish
+        let _ = reporter_task.await;
 
         self.measurements.set_duration(start.elapsed());
 
