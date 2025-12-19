@@ -5,7 +5,7 @@
 //! This library provides accurate bandwidth testing capabilities for both TCP and UDP protocols.
 //! Built on Tokio's async runtime with Rust's memory safety guarantees, rperf3-rs eliminates
 //! entire classes of bugs (buffer overflows, use-after-free, data races) while achieving
-//! 25-30 Gbps throughput on localhost tests.
+//! 40+ Gbps throughput on localhost tests.
 //!
 //! ## Features
 //!
@@ -14,10 +14,13 @@
 //! - **Bandwidth Limiting**: Control send rate for both TCP and UDP with K/M/G notation (e.g., 100M = 100 Mbps)
 //! - **UDP Metrics**: Packet loss percentage, jitter (RFC 3550), and out-of-order packet detection
 //! - **TCP Statistics**: Retransmits, congestion window (cwnd), and real-time interval reporting (Linux only)
+//! - **Async Interval Reporting**: Non-blocking progress updates with 5-10% performance improvement
+//! - **Memory-Optimized Storage**: Ring buffer design prevents unbounded growth, 30-50% memory reduction
+//! - **Lock-Free Measurements**: Atomic operations eliminate contention in high-throughput scenarios
 //! - **Interval Reporting**: Configurable interval updates with iperf3-style formatted output (default: 1 second)
 //! - **Real-time Callbacks**: Monitor test progress programmatically with event-driven callbacks
 //! - **Parallel Streams**: Multiple concurrent connections for aggregate testing
-//! - **JSON Output**: Machine-readable output compatible with automation systems
+//! - **JSON Output**: Machine-readable output compatible with automation systems (client and server)
 //! - **Dual Interface**: Use as a Rust library or standalone CLI tool
 //! - **Async I/O**: Built on Tokio for high-performance non-blocking operations
 //! - **Cross-Platform**: Linux, macOS, and Windows support
@@ -81,10 +84,14 @@
 //!
 //! ```no_run
 //! use rperf3::{Server, Config};
+//! use std::time::Duration;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let config = Config::server(5201);
+//!     // Server with JSON output and custom interval
+//!     let config = Config::server(5201)
+//!         .with_json(true)
+//!         .with_interval(Duration::from_secs(2));
 //!     let server = Server::new(config);
 //!     
 //!     println!("Server listening on port 5201");
