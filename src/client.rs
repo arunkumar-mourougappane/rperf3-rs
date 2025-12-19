@@ -1,6 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
-use crate::interval_reporter::{IntervalReport, IntervalReporter, run_reporter_task};
+use crate::interval_reporter::{run_reporter_task, IntervalReport, IntervalReporter};
 use crate::measurements::{
     get_connection_info, get_system_info, get_tcp_stats, IntervalStats, MeasurementsCollector,
     TestConfig,
@@ -1418,11 +1418,7 @@ async fn send_data(
 ) -> Result<()> {
     // Create async interval reporter
     let (reporter, receiver) = IntervalReporter::new();
-    let reporter_task = tokio::spawn(run_reporter_task(
-        receiver,
-        config.json,
-        callback.clone(),
-    ));
+    let reporter_task = tokio::spawn(run_reporter_task(receiver, config.json, callback.clone()));
 
     let buffer = buffer_pool.get();
     let start = Instant::now();
@@ -1526,11 +1522,7 @@ async fn receive_data(
 ) -> Result<()> {
     // Create async interval reporter
     let (reporter, receiver) = IntervalReporter::new();
-    let reporter_task = tokio::spawn(run_reporter_task(
-        receiver,
-        config.json,
-        callback.clone(),
-    ));
+    let reporter_task = tokio::spawn(run_reporter_task(receiver, config.json, callback.clone()));
 
     let mut buffer = buffer_pool.get();
     let start = Instant::now();
