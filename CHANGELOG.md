@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Asynchronous interval reporting system (issue #8) [Phase 2]
+- Asynchronous interval reporting system (issue #8) [Phase 2 - Complete]
   - New `interval_reporter` module with separate async task for reporting
   - Moves formatting and I/O overhead out of the critical data path
   - Expected 5-10% improvement during high-throughput tests
-  - Implemented for all client UDP and TCP functions
+  - Implemented for all client and server functions (UDP and TCP)
   - Channel-based communication reduces synchronous overhead
   - Clean clippy output with proper struct-based message passing
+  - Both client and server now use non-blocking async interval reporting
 - Lock-free packet counting for UDP tests (issue #18)
   - Eliminates lock contention in `record_udp_packet()` using atomic operations
   - Part of the atomic counters optimization (issue #3)
