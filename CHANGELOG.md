@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-stream atomic measurements to reduce lock contention (issue #19)
+  - New `PerStreamMeasurements` struct with atomic counters per stream
+  - Lock-free updates for bytes sent/received/packets on individual streams
+  - Eliminates mutex contention in parallel stream scenarios
+  - Better scaling with multiple parallel streams
+  - Maintains compatibility with existing measurement APIs
 - Asynchronous interval reporting system (issue #8) [Phase 2 - Complete]
   - New `interval_reporter` module with separate async task for reporting
   - Moves formatting and I/O overhead out of the critical data path
