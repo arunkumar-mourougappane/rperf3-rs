@@ -1,5 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::config::{Config, Protocol};
+use crate::interval_reporter::{run_reporter_task, IntervalReport, IntervalReporter};
 use crate::measurements::{get_tcp_stats, IntervalStats, MeasurementsCollector};
 use crate::protocol::{deserialize_message, serialize_message, Message, DEFAULT_STREAM_ID};
 use crate::{Error, Result};
@@ -344,6 +345,14 @@ impl Server {
     /// Standard UDP receive implementation (one packet per system call)
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     async fn run_udp_standard(&self, socket: UdpSocket) -> Result<()> {
+        // Create async interval reporter
+        let (reporter, receiver) = IntervalReporter::new();
+        let reporter_task = tokio::spawn(run_reporter_task(
+            receiver,
+            self.config.json,
+            None, // Server doesn't have callbacks
+        ));
+
         let mut buf = self.udp_buffer_pool.get();
         let start = Instant::now();
         let mut last_interval = start;
@@ -403,28 +412,29 @@ impl Server {
                             packets: Some(interval_packets),
                         });
 
-                        if !self.config.json {
-                            // Format bytes as KBytes or MBytes
-                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
-                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
-                            } else {
-                                (interval_bytes as f64 / 1_000.0, "KBytes")
-                            };
+                        // Calculate UDP metrics
+                        let (lost, expected) = self.measurements.calculate_udp_loss();
+                        let loss_percent = if expected > 0 {
+                            (lost as f64 / expected as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        let measurements = self.measurements.get();
 
-                            // Format bitrate as Mbits/sec
-                            let bitrate_val = bps / 1_000_000.0;
-
-                            println!(
-                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
-                                DEFAULT_STREAM_ID,
-                                interval_start.as_secs_f64(),
-                                elapsed.as_secs_f64(),
-                                transfer_val,
-                                transfer_unit,
-                                bitrate_val,
-                                interval_packets
-                            );
-                        }
+                        // Send to reporter task (async, non-blocking)
+                        reporter.report(IntervalReport {
+                            stream_id: DEFAULT_STREAM_ID,
+                            interval_start,
+                            interval_end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                            packets: Some(interval_packets),
+                            jitter_ms: Some(measurements.jitter_ms),
+                            lost_packets: Some(lost),
+                            lost_percent: Some(loss_percent),
+                            retransmits: None,
+                            cwnd: None,
+                        });
 
                         interval_bytes = 0;
                         interval_packets = 0;
@@ -437,6 +447,10 @@ impl Server {
             }
         }
 
+        // Signal reporter completion and wait for it to finish
+        reporter.complete();
+        let _ = reporter_task.await;
+
         Ok(())
     }
 
@@ -444,6 +458,14 @@ impl Server {
     #[cfg(target_os = "linux")]
     async fn run_udp_batched(&self, socket: UdpSocket) -> Result<()> {
         use crate::batch_socket::UdpRecvBatch;
+
+        // Create async interval reporter
+        let (reporter, receiver) = IntervalReporter::new();
+        let reporter_task = tokio::spawn(run_reporter_task(
+            receiver,
+            self.config.json,
+            None, // Server doesn't have callbacks
+        ));
 
         let mut batch = UdpRecvBatch::new();
         let start = Instant::now();
@@ -525,28 +547,29 @@ impl Server {
                             packets: Some(interval_packets),
                         });
 
-                        if !self.config.json {
-                            // Format bytes as KBytes or MBytes
-                            let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000 {
-                                (interval_bytes as f64 / 1_000_000.0, "MBytes")
-                            } else {
-                                (interval_bytes as f64 / 1_000.0, "KBytes")
-                            };
+                        // Calculate UDP metrics
+                        let (lost, expected) = self.measurements.calculate_udp_loss();
+                        let loss_percent = if expected > 0 {
+                            (lost as f64 / expected as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        let measurements = self.measurements.get();
 
-                            // Format bitrate as Mbits/sec
-                            let bitrate_val = bps / 1_000_000.0;
-
-                            println!(
-                                "[{:3}]   {:4.2}-{:4.2}  sec   {:5.0} {}  {:6.2} Mbits/sec  {:4}",
-                                DEFAULT_STREAM_ID,
-                                interval_start.as_secs_f64(),
-                                elapsed.as_secs_f64(),
-                                transfer_val,
-                                transfer_unit,
-                                bitrate_val,
-                                interval_packets
-                            );
-                        }
+                        // Send to reporter task (async, non-blocking)
+                        reporter.report(IntervalReport {
+                            stream_id: DEFAULT_STREAM_ID,
+                            interval_start,
+                            interval_end: elapsed,
+                            bytes: interval_bytes,
+                            bits_per_second: bps,
+                            packets: Some(interval_packets),
+                            jitter_ms: Some(measurements.jitter_ms),
+                            lost_packets: Some(lost),
+                            lost_percent: Some(loss_percent),
+                            retransmits: None,
+                            cwnd: None,
+                        });
 
                         interval_bytes = 0;
                         interval_packets = 0;
@@ -558,6 +581,10 @@ impl Server {
                 }
             }
         }
+
+        // Signal reporter completion and wait for it to finish
+        reporter.complete();
+        let _ = reporter_task.await;
 
         Ok(())
     }
@@ -787,6 +814,14 @@ async fn send_udp_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
+    // Create async interval reporter
+    let (reporter, receiver) = IntervalReporter::new();
+    let reporter_task = tokio::spawn(run_reporter_task(
+        receiver,
+        config.json,
+        None, // Server doesn't have callbacks
+    ));
+
     // Bind to the server's configured port for UDP
     let bind_addr = format!("0.0.0.0:{}", config.port);
     let socket = UdpSocket::bind(&bind_addr).await?;
@@ -876,16 +911,21 @@ async fn send_udp_data(
                         packets: Some(interval_packets),
                     });
 
-                    if !config.json {
-                        println!(
-                            "[{:4.1}-{:4.1} sec] {} bytes  {:.2} Mbps  ({} packets)",
-                            interval_start.as_secs_f64(),
-                            elapsed.as_secs_f64(),
-                            interval_bytes,
-                            bps / 1_000_000.0,
-                            interval_packets
-                        );
-                    }
+                    // Send to reporter task (async, non-blocking)
+                    reporter.report(IntervalReport {
+                        stream_id: DEFAULT_STREAM_ID,
+                        interval_start,
+                        interval_end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: Some(interval_packets),
+                        jitter_ms: None,
+                        lost_packets: None,
+                        lost_percent: None,
+                        retransmits: None,
+                        cwnd: None,
+                    });
+
                     interval_bytes = 0;
                     interval_packets = 0;
                     last_interval = Instant::now();
@@ -897,6 +937,10 @@ async fn send_udp_data(
             }
         }
     }
+
+    // Signal reporter completion and wait for it to finish
+    reporter.complete();
+    let _ = reporter_task.await;
 
     measurements.set_duration(start.elapsed());
     Ok(())
@@ -967,6 +1011,14 @@ async fn send_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
+    // Create async interval reporter
+    let (reporter, receiver) = IntervalReporter::new();
+    let reporter_task = tokio::spawn(run_reporter_task(
+        receiver,
+        config.json,
+        None, // Server doesn't have callbacks
+    ));
+
     let buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
@@ -1033,41 +1085,30 @@ async fn send_data(
                         packets: None,
                     });
 
-                    if !config.json {
-                        // Format bytes as GBytes or MBytes
-                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
-                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                    // Get congestion window for reporting
+                    let cwnd_kbytes = tcp_stats
+                        .as_ref()
+                        .and_then(|s| s.snd_cwnd)
+                        .map(|cwnd| cwnd / 1024);
+
+                    // Send to reporter task (async, non-blocking)
+                    reporter.report(IntervalReport {
+                        stream_id: DEFAULT_STREAM_ID,
+                        interval_start,
+                        interval_end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: None,
+                        jitter_ms: None,
+                        lost_packets: None,
+                        lost_percent: None,
+                        retransmits: if interval_retransmits > 0 {
+                            Some(interval_retransmits)
                         } else {
-                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
-                        };
-
-                        // Format bitrate as Gbits/sec or Mbits/sec
-                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
-                            (bps / 1_000_000_000.0, "Gbits/sec")
-                        } else {
-                            (bps / 1_000_000.0, "Mbits/sec")
-                        };
-
-                        // Get congestion window in KBytes
-                        let cwnd_kbytes = tcp_stats
-                            .as_ref()
-                            .and_then(|s| s.snd_cwnd)
-                            .map(|cwnd| cwnd / 1024)
-                            .unwrap_or(0);
-
-                        println!(
-                            "[{:3}]   {:4.2}-{:4.2}  sec  {:6.2} {:>7}  {:6.1} {:>10}  {:4}   {:4} KBytes",
-                            DEFAULT_STREAM_ID,
-                            interval_start.as_secs_f64(),
-                            elapsed.as_secs_f64(),
-                            transfer_val,
-                            transfer_unit,
-                            bitrate_val,
-                            bitrate_unit,
-                            interval_retransmits,
-                            cwnd_kbytes
-                        );
-                    }
+                            None
+                        },
+                        cwnd: cwnd_kbytes,
+                    });
 
                     interval_bytes = 0;
                     last_interval = Instant::now();
@@ -1079,6 +1120,10 @@ async fn send_data(
             }
         }
     }
+
+    // Signal reporter completion and wait for it to finish
+    reporter.complete();
+    let _ = reporter_task.await;
 
     measurements.set_duration(start.elapsed());
     stream.flush().await?;
@@ -1094,6 +1139,14 @@ async fn receive_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
+    // Create async interval reporter
+    let (reporter, receiver) = IntervalReporter::new();
+    let reporter_task = tokio::spawn(run_reporter_task(
+        receiver,
+        config.json,
+        None, // Server doesn't have callbacks
+    ));
+
     let mut buffer = buffer_pool.get();
     let start = Instant::now();
     let mut last_interval = start;
@@ -1137,33 +1190,24 @@ async fn receive_data(
                         packets: None,
                     });
 
-                    if !config.json {
-                        // Format bytes as GBytes or MBytes
-                        let (transfer_val, transfer_unit) = if interval_bytes >= 1_000_000_000 {
-                            (interval_bytes as f64 / 1_000_000_000.0, "GBytes")
+                    // Send to reporter task (async, non-blocking)
+                    reporter.report(IntervalReport {
+                        stream_id: DEFAULT_STREAM_ID,
+                        interval_start,
+                        interval_end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: None,
+                        jitter_ms: None,
+                        lost_packets: None,
+                        lost_percent: None,
+                        retransmits: if interval_retransmits > 0 {
+                            Some(interval_retransmits)
                         } else {
-                            (interval_bytes as f64 / 1_000_000.0, "MBytes")
-                        };
-
-                        // Format bitrate as Gbits/sec or Mbits/sec
-                        let (bitrate_val, bitrate_unit) = if bps >= 1_000_000_000.0 {
-                            (bps / 1_000_000_000.0, "Gbits/sec")
-                        } else {
-                            (bps / 1_000_000.0, "Mbits/sec")
-                        };
-
-                        println!(
-                            "[{:3}]   {:4.2}-{:4.2}  sec   {:6.2} {:>7}  {:6.1} {:>10}  {:4}",
-                            DEFAULT_STREAM_ID,
-                            interval_start.as_secs_f64(),
-                            elapsed.as_secs_f64(),
-                            transfer_val,
-                            transfer_unit,
-                            bitrate_val,
-                            bitrate_unit,
-                            interval_retransmits
-                        );
-                    }
+                            None
+                        },
+                        cwnd: None,
+                    });
 
                     interval_bytes = 0;
                     last_interval = Instant::now();
@@ -1181,6 +1225,10 @@ async fn receive_data(
             }
         }
     }
+
+    // Signal reporter completion and wait for it to finish
+    reporter.complete();
+    let _ = reporter_task.await;
 
     measurements.set_duration(start.elapsed());
 
