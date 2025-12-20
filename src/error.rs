@@ -77,3 +77,57 @@ pub enum Error {
 /// }
 /// ```
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let io_err = Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file not found",
+        ));
+        assert!(io_err.to_string().contains("IO error"));
+
+        let config_err = Error::Config("invalid port".to_string());
+        assert_eq!(config_err.to_string(), "Configuration error: invalid port");
+
+        let protocol_err = Error::Protocol("bad message".to_string());
+        assert_eq!(protocol_err.to_string(), "Protocol error: bad message");
+
+        let connection_err = Error::Connection("timeout".to_string());
+        assert_eq!(connection_err.to_string(), "Connection error: timeout");
+
+        let test_err = Error::Test("failed".to_string());
+        assert_eq!(test_err.to_string(), "Test error: failed");
+    }
+
+    #[test]
+    fn test_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let err: Error = io_err.into();
+        assert!(matches!(err, Error::Io(_)));
+    }
+
+    #[test]
+    fn test_error_from_json() {
+        let json_str = "{invalid json}";
+        let json_err = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
+        let err: Error = json_err.into();
+        assert!(matches!(err, Error::Json(_)));
+    }
+
+    #[test]
+    fn test_result_type_ok() {
+        let result: Result<i32> = Ok(42);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_result_type_err() {
+        let result: Result<i32> = Err(Error::Config("test error".to_string()));
+        assert!(result.is_err());
+    }
+}

@@ -306,3 +306,195 @@ pub async fn deserialize_message<R: tokio::io::AsyncRead + Unpin>(
     let msg = serde_json::from_slice(&json_bytes)?;
     Ok(msg)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_protocol_version() {
+        assert_eq!(PROTOCOL_VERSION, 1);
+    }
+
+    #[test]
+    fn test_default_stream_id() {
+        assert_eq!(DEFAULT_STREAM_ID, 5);
+    }
+
+    #[test]
+    fn test_stream_id_for_index() {
+        assert_eq!(stream_id_for_index(0), 5);
+        assert_eq!(stream_id_for_index(1), 7);
+        assert_eq!(stream_id_for_index(2), 9);
+        assert_eq!(stream_id_for_index(10), 25);
+    }
+
+    #[test]
+    fn test_message_setup() {
+        let msg = Message::setup(
+            "TCP".to_string(),
+            Duration::from_secs(10),
+            Some(100_000_000),
+            128 * 1024,
+            2,
+            false,
+        );
+
+        match msg {
+            Message::Setup {
+                version,
+                protocol,
+                duration,
+                bandwidth,
+                buffer_size,
+                parallel,
+                reverse,
+            } => {
+                assert_eq!(version, PROTOCOL_VERSION);
+                assert_eq!(protocol, "TCP");
+                assert_eq!(duration, 10);
+                assert_eq!(bandwidth, Some(100_000_000));
+                assert_eq!(buffer_size, 128 * 1024);
+                assert_eq!(parallel, 2);
+                assert!(!reverse);
+            }
+            _ => panic!("Expected Setup message"),
+        }
+    }
+
+    #[test]
+    fn test_message_setup_ack() {
+        let msg = Message::setup_ack(5201, "cookie123".to_string());
+
+        match msg {
+            Message::SetupAck { port, cookie } => {
+                assert_eq!(port, 5201);
+                assert_eq!(cookie, "cookie123");
+            }
+            _ => panic!("Expected SetupAck message"),
+        }
+    }
+
+    #[test]
+    fn test_message_start() {
+        let msg = Message::start(1234567890);
+
+        match msg {
+            Message::Start { timestamp } => {
+                assert_eq!(timestamp, 1234567890);
+            }
+            _ => panic!("Expected Start message"),
+        }
+    }
+
+    #[test]
+    fn test_message_done() {
+        let msg = Message::Done;
+        assert!(matches!(msg, Message::Done));
+    }
+
+    #[test]
+    fn test_message_error() {
+        let msg = Message::Error {
+            message: "Test failed".to_string(),
+        };
+
+        match msg {
+            Message::Error { message } => {
+                assert_eq!(message, "Test failed");
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_setup() {
+        let msg = Message::setup(
+            "UDP".to_string(),
+            Duration::from_secs(30),
+            Some(50_000_000),
+            65536,
+            1,
+            true,
+        );
+
+        let serialized = serialize_message(&msg).unwrap();
+        
+        // Verify serialized format: length prefix (4 bytes) + JSON
+        assert!(serialized.len() > 4);
+        let len = u32::from_be_bytes([serialized[0], serialized[1], serialized[2], serialized[3]]);
+        assert_eq!(len as usize, serialized.len() - 4);
+        
+        // Deserialize JSON directly (without length prefix)
+        let json_bytes = &serialized[4..];
+        let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+        match deserialized {
+            Message::Setup {
+                version,
+                protocol,
+                duration,
+                bandwidth,
+                buffer_size,
+                parallel,
+                reverse,
+            } => {
+                assert_eq!(version, PROTOCOL_VERSION);
+                assert_eq!(protocol, "UDP");
+                assert_eq!(duration, 30);
+                assert_eq!(bandwidth, Some(50_000_000));
+                assert_eq!(buffer_size, 65536);
+                assert_eq!(parallel, 1);
+                assert!(reverse);
+            }
+            _ => panic!("Expected Setup message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_done() {
+        let msg = Message::Done;
+        let serialized = serialize_message(&msg).unwrap();
+        
+        // Deserialize JSON directly
+        let json_bytes = &serialized[4..];
+        let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+        assert!(matches!(deserialized, Message::Done));
+    }
+
+    #[test]
+    fn test_serialize_format() {
+        let msg = Message::Done;
+        let serialized = serialize_message(&msg).unwrap();
+        
+        // Check length prefix
+        assert!(serialized.len() >= 4);
+        let len = u32::from_be_bytes([serialized[0], serialized[1], serialized[2], serialized[3]]);
+        assert_eq!(len as usize + 4, serialized.len());
+    }
+
+    #[test]
+    fn test_deserialize_invalid_json() {
+        let invalid_json = b"{invalid json}";
+        let result: Result<Message, _> = serde_json::from_slice(invalid_json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_message_json_roundtrip() {
+        let msg = Message::Error {
+            message: "Test error".to_string(),
+        };
+        
+        let json = serde_json::to_vec(&msg).unwrap();
+        let deserialized: Message = serde_json::from_slice(&json).unwrap();
+        
+        match deserialized {
+            Message::Error { message } => {
+                assert_eq!(message, "Test error");
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+}
+

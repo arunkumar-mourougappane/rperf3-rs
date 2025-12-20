@@ -246,3 +246,152 @@ fn format_interval_output(report: &IntervalReport) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_interval_report_creation() {
+        let report = IntervalReport {
+            stream_id: 5,
+            interval_start: Duration::from_secs(0),
+            interval_end: Duration::from_secs(1),
+            bytes: 1_000_000,
+            bits_per_second: 8_000_000.0,
+            packets: Some(1000),
+            jitter_ms: Some(0.5),
+            lost_packets: Some(10),
+            lost_percent: Some(1.0),
+            retransmits: Some(5),
+            cwnd: Some(64),
+        };
+
+        assert_eq!(report.stream_id, 5);
+        assert_eq!(report.bytes, 1_000_000);
+        assert_eq!(report.bits_per_second, 8_000_000.0);
+        assert_eq!(report.packets, Some(1000));
+        assert_eq!(report.jitter_ms, Some(0.5));
+        assert_eq!(report.lost_packets, Some(10));
+        assert_eq!(report.lost_percent, Some(1.0));
+        assert_eq!(report.retransmits, Some(5));
+        assert_eq!(report.cwnd, Some(64));
+    }
+
+    #[test]
+    fn test_interval_message_report() {
+        let report = IntervalReport {
+            stream_id: 5,
+            interval_start: Duration::from_secs(0),
+            interval_end: Duration::from_secs(1),
+            bytes: 100,
+            bits_per_second: 800.0,
+            packets: None,
+            jitter_ms: None,
+            lost_packets: None,
+            lost_percent: None,
+            retransmits: None,
+            cwnd: None,
+        };
+
+        let msg = IntervalMessage::Report(report.clone());
+        match msg {
+            IntervalMessage::Report(r) => {
+                assert_eq!(r.stream_id, 5);
+                assert_eq!(r.bytes, 100);
+            }
+            _ => panic!("Expected Report message"),
+        }
+    }
+
+    #[test]
+    fn test_interval_message_complete() {
+        let msg = IntervalMessage::Complete;
+        assert!(matches!(msg, IntervalMessage::Complete));
+    }
+
+    #[test]
+    fn test_interval_reporter_new() {
+        let (reporter, _receiver) = IntervalReporter::new();
+        // Just verify it doesn't panic and creates successfully
+        let _clone = reporter.clone();
+    }
+
+    #[tokio::test]
+    async fn test_interval_reporter_report() {
+        let (reporter, mut receiver) = IntervalReporter::new();
+
+        let report = IntervalReport {
+            stream_id: 5,
+            interval_start: Duration::from_secs(0),
+            interval_end: Duration::from_secs(1),
+            bytes: 1000,
+            bits_per_second: 8000.0,
+            packets: None,
+            jitter_ms: None,
+            lost_packets: None,
+            lost_percent: None,
+            retransmits: None,
+            cwnd: None,
+        };
+
+        reporter.report(report.clone());
+
+        let msg = receiver.recv().await.unwrap();
+        match msg {
+            IntervalMessage::Report(r) => {
+                assert_eq!(r.bytes, 1000);
+                assert_eq!(r.bits_per_second, 8000.0);
+            }
+            _ => panic!("Expected Report message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_interval_reporter_complete() {
+        let (reporter, mut receiver) = IntervalReporter::new();
+
+        reporter.complete();
+
+        let msg = receiver.recv().await.unwrap();
+        assert!(matches!(msg, IntervalMessage::Complete));
+    }
+
+    #[tokio::test]
+    async fn test_interval_reporter_multiple_reports() {
+        let (reporter, mut receiver) = IntervalReporter::new();
+
+        // Send multiple reports
+        for i in 0..3 {
+            let report = IntervalReport {
+                stream_id: 5,
+                interval_start: Duration::from_secs(i),
+                interval_end: Duration::from_secs(i + 1),
+                bytes: 1000 * (i + 1),
+                bits_per_second: 8000.0,
+                packets: None,
+                jitter_ms: None,
+                lost_packets: None,
+                lost_percent: None,
+                retransmits: None,
+                cwnd: None,
+            };
+            reporter.report(report);
+        }
+        reporter.complete();
+
+        // Receive all reports
+        let mut count = 0;
+        while let Some(msg) = receiver.recv().await {
+            match msg {
+                IntervalMessage::Report(r) => {
+                    assert_eq!(r.bytes, 1000 * (count + 1));
+                    count += 1;
+                }
+                IntervalMessage::Complete => break,
+            }
+        }
+        assert_eq!(count, 3);
+    }
+}
+
