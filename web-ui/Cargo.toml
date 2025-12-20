@@ -1,0 +1,42 @@
+[package]
+name = "rperf3-web-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Web UI for rperf3 network performance testing"
+
+[[bin]]
+name = "rperf3-web"
+path = "src/main.rs"
+
+[dependencies]
+# Core
+rperf3-rs = { path = ".." }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+
+# Web framework
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async utilities
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
+parking_lot = { workspace = true }
+
+# UUID for test IDs
+uuid = { workspace = true }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+anyhow = { workspace = true }

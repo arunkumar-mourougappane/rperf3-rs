@@ -1,11 +1,30 @@
-[package]
-name = "rperf3-rs"
+[workspace]
+members = [".", "web-ui"]
+resolver = "2"
+
+[workspace.package]
 version = "0.6.1"
 edition = "2021"
 authors = ["Arunkumar Mourougappane <amouroug@buffalo.edu>"]
-description = "High-performance network throughput measurement tool, inspired by iperf3."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/arunkumar-mourougappane/rperf3-rs"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+parking_lot = "0.12"
+
+[package]
+name = "rperf3-rs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "High-performance network throughput measurement tool, inspired by iperf3."
+license.workspace = true
+repository.workspace = true
 readme = "README.md"
 keywords = ["network", "benchmarking", "performance", "iperf", "bandwidth"]
 categories = ["network-programming", "command-line-utilities"]
@@ -19,16 +38,16 @@ name = "rperf3"
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true }
 tokio-util = "0.7"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-anyhow = "1"
+anyhow = { workspace = true }
 thiserror = "2.0.17"
 byteorder = "1"
 chrono = "0.4"
-parking_lot = "0.12"
+parking_lot = { workspace = true }
 log = "0.4"
 env_logger = "0.11"
 rand = "0.9.2"
