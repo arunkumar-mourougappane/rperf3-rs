@@ -18,12 +18,44 @@ use std::net::SocketAddr;
 /// This value balances throughput gains against latency. Too high
 /// and we introduce unnecessary latency, too low and we don't get
 /// the full benefit of batching.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::batch_socket::MAX_BATCH_SIZE;
+///
+/// // Use MAX_BATCH_SIZE to size packet buffers
+/// let mut packets: Vec<Vec<u8>> = Vec::with_capacity(MAX_BATCH_SIZE);
+/// assert!(MAX_BATCH_SIZE > 0);
+/// assert!(MAX_BATCH_SIZE <= 256); // Reasonable upper bound
+/// ```
 pub const MAX_BATCH_SIZE: usize = 64;
 
 /// A batch of UDP packets ready to send.
 ///
 /// This structure holds multiple packets that can be sent in a single
 /// `sendmmsg` system call on Linux, or sent individually on other platforms.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::batch_socket::UdpSendBatch;
+/// use std::net::SocketAddr;
+///
+/// let mut batch = UdpSendBatch::new();
+/// let addr: SocketAddr = "127.0.0.1:5201".parse().unwrap();
+///
+/// // Add packets to the batch
+/// let packet = vec![1, 2, 3, 4];
+/// assert!(batch.add(packet, addr));
+/// assert_eq!(batch.len(), 1);
+/// assert!(!batch.is_empty());
+///
+/// // Clear the batch
+/// batch.clear();
+/// assert_eq!(batch.len(), 0);
+/// assert!(batch.is_empty());
+/// ```
 #[derive(Debug)]
 pub struct UdpSendBatch {
     /// The packets to send
@@ -272,6 +304,17 @@ impl Default for UdpSendBatch {
 ///
 /// This structure holds multiple received packets from a single
 /// `recvmmsg` system call on Linux.
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::batch_socket::UdpRecvBatch;
+///
+/// let mut batch = UdpRecvBatch::new();
+/// // The batch is pre-allocated with buffers
+/// assert!(batch.is_empty());
+/// assert_eq!(batch.len(), 0);
+/// ```
 #[derive(Debug)]
 pub struct UdpRecvBatch {
     /// The received packets

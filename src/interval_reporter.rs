@@ -11,6 +11,30 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Statistics for an interval report
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::interval_reporter::IntervalReport;
+/// use std::time::Duration;
+///
+/// let report = IntervalReport {
+///     stream_id: 5,
+///     interval_start: Duration::from_secs(0),
+///     interval_end: Duration::from_secs(1),
+///     bytes: 1_000_000,
+///     bits_per_second: 8_000_000.0,
+///     packets: Some(1000),
+///     jitter_ms: Some(0.5),
+///     lost_packets: Some(0),
+///     lost_percent: Some(0.0),
+///     retransmits: None,
+///     cwnd: None,
+/// };
+///
+/// assert_eq!(report.bytes, 1_000_000);
+/// assert_eq!(report.bits_per_second, 8_000_000.0);
+/// ```
 #[derive(Debug, Clone)]
 pub struct IntervalReport {
     pub stream_id: usize,
@@ -27,6 +51,20 @@ pub struct IntervalReport {
 }
 
 /// Message sent to the interval reporter task
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::interval_reporter::IntervalMessage;
+///
+/// // Create a completion message
+/// let msg = IntervalMessage::Complete;
+///
+/// match msg {
+///     IntervalMessage::Complete => println!("Test completed"),
+///     IntervalMessage::Report(_) => println!("Interval report"),
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub enum IntervalMessage {
     /// Report an interval with statistics
@@ -36,6 +74,38 @@ pub enum IntervalMessage {
 }
 
 /// Handle for sending interval updates
+///
+/// # Examples
+///
+/// ```
+/// use rperf3::interval_reporter::{IntervalReporter, IntervalReport};
+/// use std::time::Duration;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let (reporter, mut receiver) = IntervalReporter::new();
+///
+///     // Clone the reporter to send from another context
+///     let reporter_clone = reporter.clone();
+///
+///     // Send a report
+///     let report = IntervalReport {
+///         stream_id: 5,
+///         interval_start: Duration::from_secs(0),
+///         interval_end: Duration::from_secs(1),
+///         bytes: 1000,
+///         bits_per_second: 8000.0,
+///         packets: None,
+///         jitter_ms: None,
+///         lost_packets: None,
+///         lost_percent: None,
+///         retransmits: None,
+///         cwnd: None,
+///     };
+///     reporter_clone.report(report);
+///     reporter_clone.complete();
+/// }
+/// ```
 #[derive(Clone)]
 pub struct IntervalReporter {
     sender: mpsc::UnboundedSender<IntervalMessage>,
