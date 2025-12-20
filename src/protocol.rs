@@ -419,12 +419,12 @@ mod tests {
         );
 
         let serialized = serialize_message(&msg).unwrap();
-        
+
         // Verify serialized format: length prefix (4 bytes) + JSON
         assert!(serialized.len() > 4);
         let len = u32::from_be_bytes([serialized[0], serialized[1], serialized[2], serialized[3]]);
         assert_eq!(len as usize, serialized.len() - 4);
-        
+
         // Deserialize JSON directly (without length prefix)
         let json_bytes = &serialized[4..];
         let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
@@ -455,7 +455,7 @@ mod tests {
     fn test_serialize_deserialize_done() {
         let msg = Message::Done;
         let serialized = serialize_message(&msg).unwrap();
-        
+
         // Deserialize JSON directly
         let json_bytes = &serialized[4..];
         let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
@@ -466,7 +466,7 @@ mod tests {
     fn test_serialize_format() {
         let msg = Message::Done;
         let serialized = serialize_message(&msg).unwrap();
-        
+
         // Check length prefix
         assert!(serialized.len() >= 4);
         let len = u32::from_be_bytes([serialized[0], serialized[1], serialized[2], serialized[3]]);
@@ -485,10 +485,10 @@ mod tests {
         let msg = Message::Error {
             message: "Test error".to_string(),
         };
-        
+
         let json = serde_json::to_vec(&msg).unwrap();
         let deserialized: Message = serde_json::from_slice(&json).unwrap();
-        
+
         match deserialized {
             Message::Error { message } => {
                 assert_eq!(message, "Test error");
@@ -497,4 +497,3 @@ mod tests {
         }
     }
 }
-
