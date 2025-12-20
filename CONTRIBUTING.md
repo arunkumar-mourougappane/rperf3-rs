@@ -35,15 +35,19 @@ cargo fmt
 rperf3-rs/
 ├── src/
 │   ├── lib.rs                      # Library root, exports public API
-│   ├── main.rs                     # Legacy CLI entry point (deprecated)
 │   ├── bin/
 │   │   └── main.rs                 # Primary CLI binary entry point
+│   ├── batch_socket.rs             # Batch UDP operations (sendmmsg/recvmmsg)
+│   ├── buffer_pool.rs              # Buffer pooling for memory efficiency
 │   ├── client.rs                   # Client implementation with callback support
-│   ├── server.rs                   # Server implementation
-│   ├── protocol.rs                 # Protocol message definitions
 │   ├── config.rs                   # Configuration and builder patterns
+│   ├── error.rs                    # Error types and handling
+│   ├── interval_reporter.rs        # Async interval reporting system
 │   ├── measurements.rs             # Statistics collection (TCP/UDP)
-│   └── error.rs                    # Error types and handling
+│   ├── protocol.rs                 # Protocol message definitions
+│   ├── server.rs                   # Server implementation
+│   ├── token_bucket.rs             # Token bucket bandwidth limiting
+│   └── udp_packet.rs               # UDP packet structure and parsing
 ├── examples/                       # Usage examples
 │   ├── server.rs                   # Basic server example
 │   ├── client.rs                   # Basic client example
@@ -52,12 +56,23 @@ rperf3-rs/
 │   ├── client_closure_callback.rs  # Callback example with closures
 │   ├── show_json_structure.rs      # TCP JSON output demonstration
 │   ├── show_udp_json.rs            # UDP JSON output demonstration
-│   └── test_json_output.rs         # JSON serialization testing
+│   ├── test_json_output.rs         # JSON serialization testing
+│   ├── batch_send_test.rs          # Batch socket operations demo
+│   ├── cancellable_test.rs         # Cancellation token usage
+│   ├── tcp_nodelay_test.rs         # TCP_NODELAY optimization demo
+│   ├── test_retransmits.rs         # TCP retransmit statistics
+│   ├── token_bucket_demo.rs        # Token bucket algorithm demo
+│   └── udp_buffer_test.rs          # UDP buffer size testing
 ├── tests/                          # Integration tests
-│   └── integration_tests.rs
+│   ├── callback_tests.rs           # Callback functionality tests
+│   └── integration_tests.rs        # End-to-end integration tests
+├── docs/
+│   └── TOKEN_BUCKET.md             # Token bucket algorithm documentation
 ├── CHANGELOG.md                    # Version history and features
 ├── CONTRIBUTING.md                 # This file
-└── README.md                       # User documentation
+├── LICENSE                         # MIT/Apache-2.0 dual license
+├── README.md                       # User documentation
+└── RELEASE_NOTES.md                # Release notes and migration guides
 ```
 
 ## How to Contribute
