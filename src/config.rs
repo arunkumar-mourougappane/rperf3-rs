@@ -421,3 +421,138 @@ impl Config {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_protocol_as_str() {
+        assert_eq!(Protocol::Tcp.as_str(), "Tcp");
+        assert_eq!(Protocol::Udp.as_str(), "Udp");
+    }
+
+    #[test]
+    fn test_protocol_equality() {
+        assert_eq!(Protocol::Tcp, Protocol::Tcp);
+        assert_eq!(Protocol::Udp, Protocol::Udp);
+        assert_ne!(Protocol::Tcp, Protocol::Udp);
+    }
+
+    #[test]
+    fn test_mode_equality() {
+        assert_eq!(Mode::Server, Mode::Server);
+        assert_eq!(Mode::Client, Mode::Client);
+        assert_ne!(Mode::Server, Mode::Client);
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert_eq!(config.mode, Mode::Client);
+        assert_eq!(config.protocol, Protocol::Tcp);
+        assert_eq!(config.port, 5201);
+        assert_eq!(config.duration, Duration::from_secs(10));
+        assert_eq!(config.buffer_size, 128 * 1024);
+        assert_eq!(config.parallel, 1);
+        assert!(!config.reverse);
+        assert!(!config.json);
+        assert_eq!(config.interval, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_config_new() {
+        let config = Config::new();
+        assert_eq!(config.port, 5201);
+    }
+
+    #[test]
+    fn test_config_server() {
+        let config = Config::server(8080);
+        assert_eq!(config.mode, Mode::Server);
+        assert_eq!(config.port, 8080);
+    }
+
+    #[test]
+    fn test_config_client() {
+        let config = Config::client("192.168.1.1".to_string(), 5201);
+        assert_eq!(config.mode, Mode::Client);
+        assert_eq!(config.server_addr, Some("192.168.1.1".to_string()));
+        assert_eq!(config.port, 5201);
+    }
+
+    #[test]
+    fn test_config_with_protocol() {
+        let config = Config::new().with_protocol(Protocol::Udp);
+        assert_eq!(config.protocol, Protocol::Udp);
+    }
+
+    #[test]
+    fn test_config_with_duration() {
+        let duration = Duration::from_secs(30);
+        let config = Config::new().with_duration(duration);
+        assert_eq!(config.duration, duration);
+    }
+
+    #[test]
+    fn test_config_with_bandwidth() {
+        let config = Config::new().with_bandwidth(100_000_000);
+        assert_eq!(config.bandwidth, Some(100_000_000));
+    }
+
+    #[test]
+    fn test_config_with_buffer_size() {
+        let config = Config::new().with_buffer_size(256 * 1024);
+        assert_eq!(config.buffer_size, 256 * 1024);
+    }
+
+    #[test]
+    fn test_config_with_parallel() {
+        let config = Config::new().with_parallel(4);
+        assert_eq!(config.parallel, 4);
+    }
+
+    #[test]
+    fn test_config_with_reverse() {
+        let config = Config::new().with_reverse(true);
+        assert!(config.reverse);
+    }
+
+    #[test]
+    fn test_config_with_json() {
+        let config = Config::new().with_json(true);
+        assert!(config.json);
+    }
+
+    #[test]
+    fn test_config_with_interval() {
+        let interval = Duration::from_secs(2);
+        let config = Config::new().with_interval(interval);
+        assert_eq!(config.interval, interval);
+    }
+
+    #[test]
+    fn test_config_builder_chain() {
+        let config = Config::client("10.0.0.1".to_string(), 5201)
+            .with_protocol(Protocol::Udp)
+            .with_duration(Duration::from_secs(60))
+            .with_bandwidth(50_000_000)
+            .with_buffer_size(64 * 1024)
+            .with_parallel(2)
+            .with_reverse(true)
+            .with_json(true)
+            .with_interval(Duration::from_millis(500));
+
+        assert_eq!(config.mode, Mode::Client);
+        assert_eq!(config.protocol, Protocol::Udp);
+        assert_eq!(config.server_addr, Some("10.0.0.1".to_string()));
+        assert_eq!(config.port, 5201);
+        assert_eq!(config.duration, Duration::from_secs(60));
+        assert_eq!(config.bandwidth, Some(50_000_000));
+        assert_eq!(config.buffer_size, 64 * 1024);
+        assert_eq!(config.parallel, 2);
+        assert!(config.reverse);
+        assert!(config.json);
+        assert_eq!(config.interval, Duration::from_millis(500));
+    }
+}
