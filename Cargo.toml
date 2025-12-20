@@ -37,3 +37,8 @@ socket2 = "0.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+proptest = "1.5"
+mockall = "0.13"
+tokio-test = "0.4"

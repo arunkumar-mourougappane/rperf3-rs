@@ -496,4 +496,254 @@ mod tests {
             _ => panic!("Expected Error message"),
         }
     }
+
+    // ============================================================
+    // Property-Based Tests
+    // ============================================================
+
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        // Strategy for generating valid protocol strings
+        fn protocol_strategy() -> impl Strategy<Value = String> {
+            prop_oneof![
+                Just("TCP".to_string()),
+                Just("UDP".to_string()),
+                Just("tcp".to_string()),
+                Just("udp".to_string()),
+            ]
+        }
+
+        proptest! {
+            /// Property: Any Setup message can be serialized and deserialized
+            #[test]
+            fn prop_setup_roundtrip(
+                protocol in protocol_strategy(),
+                duration in 1u64..3600,
+                bandwidth in proptest::option::of(1u64..1_000_000_000),
+                buffer_size in 1usize..1_048_576,
+                parallel in 1usize..128,
+                reverse in any::<bool>(),
+            ) {
+                let msg = Message::setup(
+                    protocol.clone(),
+                    Duration::from_secs(duration),
+                    bandwidth,
+                    buffer_size,
+                    parallel,
+                    reverse,
+                );
+
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::Setup {
+                    version,
+                    protocol: p,
+                    duration: d,
+                    bandwidth: b,
+                    buffer_size: bs,
+                    parallel: par,
+                    reverse: r,
+                } = deserialized
+                {
+                    prop_assert_eq!(version, PROTOCOL_VERSION);
+                    prop_assert_eq!(p, protocol);
+                    prop_assert_eq!(d, duration);
+                    prop_assert_eq!(b, bandwidth);
+                    prop_assert_eq!(bs, buffer_size);
+                    prop_assert_eq!(par, parallel);
+                    prop_assert_eq!(r, reverse);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected Setup message"));
+                }
+            }
+
+            /// Property: Any SetupAck message can be serialized and deserialized
+            #[test]
+            fn prop_setup_ack_roundtrip(
+                port in 1024u16..65535,
+                cookie in "[a-zA-Z0-9]{8,32}",
+            ) {
+                let msg = Message::setup_ack(port, cookie.clone());
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::SetupAck { port: p, cookie: c } = deserialized {
+                    prop_assert_eq!(p, port);
+                    prop_assert_eq!(c, cookie);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected SetupAck message"));
+                }
+            }
+
+            /// Property: Any Interval message can be serialized and deserialized
+            #[test]
+            fn prop_interval_roundtrip(
+                stream_id in 0usize..256,
+                start in 0.0f64..3600.0,
+                duration in 0.1f64..10.0,
+                bytes in 0u64..1_000_000_000,
+            ) {
+                let end = start + duration;
+                let bits_per_second = if duration > 0.0 {
+                    (bytes as f64 * 8.0) / duration
+                } else {
+                    0.0
+                };
+
+                let msg = Message::interval(stream_id, start, end, bytes, bits_per_second);
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::Interval {
+                    stream_id: sid,
+                    start: s,
+                    end: e,
+                    bytes: b,
+                    bits_per_second: bps,
+                } = deserialized
+                {
+                    prop_assert_eq!(sid, stream_id);
+                    prop_assert!((s - start).abs() < 1e-9);
+                    prop_assert!((e - end).abs() < 1e-9);
+                    prop_assert_eq!(b, bytes);
+                    prop_assert!((bps - bits_per_second).abs() < 1e-3);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected Interval message"));
+                }
+            }
+
+            /// Property: Any Result message can be serialized and deserialized
+            #[test]
+            fn prop_result_roundtrip(
+                stream_id in 0usize..256,
+                bytes_sent in 0u64..10_000_000_000,
+                bytes_received in 0u64..10_000_000_000,
+                duration in 0.1f64..3600.0,
+                retransmits in proptest::option::of(0u64..1_000_000),
+            ) {
+                let bits_per_second = ((bytes_sent + bytes_received) as f64 * 8.0) / duration;
+
+                let msg = Message::result(
+                    stream_id,
+                    bytes_sent,
+                    bytes_received,
+                    duration,
+                    bits_per_second,
+                    retransmits,
+                );
+
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::Result {
+                    stream_id: sid,
+                    bytes_sent: bs,
+                    bytes_received: br,
+                    duration: d,
+                    bits_per_second: bps,
+                    retransmits: r,
+                } = deserialized
+                {
+                    prop_assert_eq!(sid, stream_id);
+                    prop_assert_eq!(bs, bytes_sent);
+                    prop_assert_eq!(br, bytes_received);
+                    prop_assert!((d - duration).abs() < 1e-9);
+                    prop_assert!((bps - bits_per_second).abs() < 1e-3);
+                    prop_assert_eq!(r, retransmits);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected Result message"));
+                }
+            }
+
+            /// Property: Error messages with any string can be serialized/deserialized
+            #[test]
+            fn prop_error_roundtrip(
+                message in ".*",
+            ) {
+                let msg = Message::error(message.clone());
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::Error { message: m } = deserialized {
+                    prop_assert_eq!(m, message);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected Error message"));
+                }
+            }
+
+            /// Property: Serialized length prefix always matches actual JSON length
+            #[test]
+            fn prop_length_prefix_correct(
+                protocol in protocol_strategy(),
+                duration in 1u64..3600,
+            ) {
+                let msg = Message::setup(
+                    protocol,
+                    Duration::from_secs(duration),
+                    None,
+                    8192,
+                    1,
+                    false,
+                );
+
+                let serialized = serialize_message(&msg).unwrap();
+                let len_prefix = u32::from_be_bytes([
+                    serialized[0],
+                    serialized[1],
+                    serialized[2],
+                    serialized[3],
+                ]);
+
+                // Length prefix should equal the JSON length
+                prop_assert_eq!(len_prefix as usize, serialized.len() - 4);
+            }
+
+            /// Property: Stream IDs are correctly generated for any index
+            #[test]
+            fn prop_stream_id_generation(index in 0usize..1000) {
+                let stream_id = stream_id_for_index(index);
+
+                // Stream IDs should be: DEFAULT_STREAM_ID + index * 2
+                prop_assert_eq!(stream_id, DEFAULT_STREAM_ID + (index * 2));
+
+                // Stream IDs should always be odd (starting from 5)
+                prop_assert_eq!(stream_id % 2, 1);
+            }
+
+            /// Property: Done message always roundtrips correctly
+            #[test]
+            fn prop_done_roundtrip(_dummy in any::<u8>()) {
+                let msg = Message::Done;
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                prop_assert!(matches!(deserialized, Message::Done));
+            }
+
+            /// Property: Start message always roundtrips with correct timestamp
+            #[test]
+            fn prop_start_roundtrip(timestamp in any::<u64>()) {
+                let msg = Message::start(timestamp);
+                let serialized = serialize_message(&msg).unwrap();
+                let json_bytes = &serialized[4..];
+                let deserialized: Message = serde_json::from_slice(json_bytes).unwrap();
+
+                if let Message::Start { timestamp: ts } = deserialized {
+                    prop_assert_eq!(ts, timestamp);
+                } else {
+                    return Err(proptest::test_runner::TestCaseError::fail("Expected Start message"));
+                }
+            }
+        }
+    }
 }
