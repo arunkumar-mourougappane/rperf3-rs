@@ -1819,3 +1819,444 @@ pub fn get_tcp_stats(stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats
 pub fn get_tcp_stats(_stream: &tokio::net::TcpStream) -> std::io::Result<TcpStats> {
     Ok(TcpStats::default())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============================================================
+    // CircularIntervalBuffer Tests
+    // ============================================================
+
+    #[test]
+    fn test_circular_buffer_push_within_capacity() {
+        let mut buffer = CircularIntervalBuffer::new();
+
+        for i in 0..10u64 {
+            buffer.push_back(IntervalStats {
+                start: Duration::from_secs(i),
+                end: Duration::from_secs(i + 1),
+                bytes: i * 1000,
+                bits_per_second: (i as f64) * 8000.0,
+                packets: i,
+            });
+        }
+
+        assert_eq!(buffer.len(), 10);
+    }
+
+    #[test]
+    fn test_circular_buffer_eviction() {
+        let mut buffer = CircularIntervalBuffer::new();
+
+        // Push more than MAX_INTERVALS (100 in test mode)
+        for i in 0..150u64 {
+            buffer.push_back(IntervalStats {
+                start: Duration::from_secs(i),
+                end: Duration::from_secs(i + 1),
+                bytes: i,
+                bits_per_second: i as f64,
+                packets: 0,
+            });
+        }
+
+        // Should have evicted the oldest 50 entries
+        assert_eq!(buffer.len(), MAX_INTERVALS);
+
+        // First element should be from iteration 50
+        let first = buffer.iter().next().unwrap();
+        assert_eq!(first.bytes, 50);
+    }
+
+    #[test]
+    fn test_circular_buffer_with_capacity() {
+        let buffer = CircularIntervalBuffer::with_capacity(50);
+        assert_eq!(buffer.len(), 0);
+        // Capacity should be capped at MAX_INTERVALS
+    }
+
+    // ============================================================
+    // TcpStats Tests
+    // ============================================================
+
+    #[test]
+    fn test_tcp_stats_optional_fields() {
+        let mut stats = TcpStats::default();
+
+        // Initially, all optional fields should be None
+        assert_eq!(stats.snd_cwnd_opt(), None);
+        assert_eq!(stats.rtt_opt(), None);
+        assert_eq!(stats.rttvar_opt(), None);
+        assert_eq!(stats.pmtu_opt(), None);
+
+        // Set flags and values
+        stats.flags = TCP_SND_CWND_PRESENT | TCP_RTT_PRESENT;
+        stats.snd_cwnd = 65536;
+        stats.rtt = 1000;
+
+        assert_eq!(stats.snd_cwnd_opt(), Some(65536));
+        assert_eq!(stats.rtt_opt(), Some(1000));
+        assert_eq!(stats.rttvar_opt(), None);
+        assert_eq!(stats.pmtu_opt(), None);
+    }
+
+    #[test]
+    fn test_tcp_stats_serialization() {
+        let stats = TcpStats {
+            flags: TCP_SND_CWND_PRESENT | TCP_PMTU_PRESENT,
+            retransmits: 5,
+            snd_cwnd: 32768,
+            pmtu: 1500,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&stats).unwrap();
+        let deserialized: TcpStats = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.retransmits, 5);
+        assert_eq!(deserialized.snd_cwnd_opt(), Some(32768));
+        assert_eq!(deserialized.pmtu_opt(), Some(1500));
+        assert_eq!(deserialized.rtt_opt(), None);
+    }
+
+    // ============================================================
+    // Measurements Tests
+    // ============================================================
+
+    #[test]
+    fn test_measurements_new() {
+        let m = Measurements::new();
+        assert_eq!(m.total_bytes_sent, 0);
+        assert_eq!(m.total_bytes_received, 0);
+        assert_eq!(m.total_duration, Duration::from_secs(0));
+        assert_eq!(m.streams.len(), 0);
+    }
+
+    #[test]
+    fn test_measurements_total_bits_per_second() {
+        let mut m = Measurements::new();
+        m.total_bytes_sent = 100_000_000; // 100 MB
+        m.total_bytes_received = 0;
+        m.set_duration(Duration::from_secs(10));
+
+        assert_eq!(m.total_bits_per_second(), 80_000_000.0); // 80 Mbps
+    }
+
+    #[test]
+    fn test_measurements_total_bits_per_second_bidirectional() {
+        let mut m = Measurements::new();
+        m.total_bytes_sent = 100_000_000;
+        m.total_bytes_received = 50_000_000;
+        m.set_duration(Duration::from_secs(10));
+
+        // Total should include both directions
+        assert_eq!(m.total_bits_per_second(), 120_000_000.0);
+    }
+
+    #[test]
+    fn test_measurements_zero_duration() {
+        let mut m = Measurements::new();
+        m.total_bytes_sent = 100_000_000;
+
+        // Should return 0.0 when duration is zero
+        assert_eq!(m.total_bits_per_second(), 0.0);
+    }
+
+    #[test]
+    fn test_measurements_add_stream() {
+        let mut m = Measurements::new();
+
+        m.add_stream(StreamStats {
+            stream_id: 0,
+            bytes_sent: 1000,
+            bytes_received: 500,
+            duration: Duration::from_secs(1),
+            retransmits: Some(5),
+        });
+
+        assert_eq!(m.total_bytes_sent, 1000);
+        assert_eq!(m.total_bytes_received, 500);
+        assert_eq!(m.streams.len(), 1);
+    }
+
+    #[test]
+    fn test_measurements_set_duration_updates_streams() {
+        let mut m = Measurements::new();
+
+        m.add_stream(StreamStats {
+            stream_id: 0,
+            bytes_sent: 1000,
+            bytes_received: 0,
+            duration: Duration::from_secs(1),
+            retransmits: None,
+        });
+
+        m.set_duration(Duration::from_secs(10));
+
+        assert_eq!(m.total_duration, Duration::from_secs(10));
+        assert_eq!(m.streams[0].duration, Duration::from_secs(10));
+    }
+
+    // ============================================================
+    // MeasurementsCollector Tests
+    // ============================================================
+
+    #[test]
+    fn test_collector_new() {
+        let collector = MeasurementsCollector::new();
+        let m = collector.get();
+        assert_eq!(m.total_bytes_sent, 0);
+        assert_eq!(m.total_bytes_received, 0);
+    }
+
+    #[test]
+    fn test_collector_record_bytes_sent() {
+        let collector = MeasurementsCollector::new();
+        collector.record_bytes_sent(0, 1024);
+        collector.record_bytes_sent(0, 2048);
+
+        let m = collector.get();
+        assert_eq!(m.total_bytes_sent, 3072);
+    }
+
+    #[test]
+    fn test_collector_record_bytes_received() {
+        let collector = MeasurementsCollector::new();
+        collector.record_bytes_received(0, 512);
+        collector.record_bytes_received(0, 1024);
+
+        let m = collector.get();
+        assert_eq!(m.total_bytes_received, 1536);
+    }
+
+    #[test]
+    fn test_collector_multiple_streams() {
+        let collector = MeasurementsCollector::new();
+        collector.record_bytes_sent(0, 1000);
+        collector.record_bytes_sent(1, 2000);
+        collector.record_bytes_sent(2, 3000);
+
+        let m = collector.get();
+        assert_eq!(m.total_bytes_sent, 6000);
+        assert_eq!(m.streams.len(), 3);
+    }
+
+    #[test]
+    fn test_collector_udp_packet_counting() {
+        let collector = MeasurementsCollector::new();
+
+        for _ in 0..100 {
+            collector.record_udp_packet(0);
+        }
+
+        collector.sync_atomic_counters();
+        let m = collector.get();
+        assert_eq!(m.total_packets, 100);
+    }
+
+    #[test]
+    fn test_collector_udp_loss_calculation() {
+        let collector = MeasurementsCollector::new();
+
+        // Simulate receiving packets with sequence numbers: 0, 1, 2, 4, 5 (missing 3)
+        let sequences = vec![0, 1, 2, 4, 5];
+        let timestamp_us = 1000000;
+
+        for seq in sequences {
+            collector.record_udp_packet_received(
+                seq,
+                timestamp_us + seq * 1000,
+                timestamp_us + seq * 1000 + 100,
+            );
+        }
+
+        let (lost, expected) = collector.calculate_udp_loss();
+        assert_eq!(expected, 6); // max_seq + 1 = 5 + 1
+        assert_eq!(lost, 1); // expected - received = 6 - 5
+    }
+
+    #[test]
+    fn test_collector_udp_out_of_order() {
+        let collector = MeasurementsCollector::new();
+
+        // Receive packets: 0, 2, 1 (1 is out-of-order)
+        let sequences = vec![0, 2, 1];
+        let timestamp_us = 1000000;
+
+        for seq in sequences {
+            collector.record_udp_packet_received(
+                seq,
+                timestamp_us + seq * 1000,
+                timestamp_us + seq * 1000 + 100,
+            );
+        }
+
+        let m = collector.get();
+        assert_eq!(m.out_of_order_packets, 1);
+    }
+
+    #[test]
+    fn test_collector_jitter_calculation() {
+        let collector = MeasurementsCollector::new();
+
+        // Simulate packets with varying transit times
+        let base_time = 1000000;
+        collector.record_udp_packet_received(0, base_time, base_time + 100);
+        collector.record_udp_packet_received(1, base_time + 1000, base_time + 1200); // +100μs jitter
+        collector.record_udp_packet_received(2, base_time + 2000, base_time + 2150); // +50μs jitter
+
+        let m = collector.get();
+        // Jitter should be non-zero due to varying transit times
+        assert!(m.jitter_ms > 0.0);
+    }
+
+    #[test]
+    fn test_collector_sync_atomic_counters() {
+        let collector = MeasurementsCollector::new();
+        collector.record_bytes_sent(0, 1024);
+        collector.record_bytes_received(0, 512);
+
+        // Before sync
+        {
+            let m = collector.inner.lock();
+            assert_eq!(m.total_bytes_sent, 0); // Not synced yet
+        }
+
+        // After sync
+        collector.sync_atomic_counters();
+        {
+            let m = collector.inner.lock();
+            assert_eq!(m.total_bytes_sent, 1024);
+            assert_eq!(m.total_bytes_received, 512);
+        }
+    }
+
+    #[test]
+    fn test_collector_with_capacity() {
+        let collector = MeasurementsCollector::with_capacity(4, 30);
+        let m = collector.get();
+        assert_eq!(m.streams.len(), 0);
+    }
+
+    #[test]
+    fn test_collector_set_duration() {
+        let collector = MeasurementsCollector::new();
+        collector.set_duration(Duration::from_secs(10));
+
+        let m = collector.get();
+        assert_eq!(m.total_duration, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_collector_add_interval() {
+        let collector = MeasurementsCollector::new();
+
+        collector.add_interval(IntervalStats {
+            start: Duration::from_secs(0),
+            end: Duration::from_secs(1),
+            bytes: 1024,
+            bits_per_second: 8192.0,
+            packets: 10,
+        });
+
+        let m = collector.get();
+        assert_eq!(m.intervals.len(), 1);
+    }
+
+    // ============================================================
+    // Edge Case Tests
+    // ============================================================
+
+    #[test]
+    fn test_udp_stats_default() {
+        let stats = UdpStats::default();
+        assert_eq!(stats.jitter_ms, 0.0);
+        assert_eq!(stats.lost_packets, 0);
+        assert_eq!(stats.packets, 0);
+        assert_eq!(stats.lost_percent, 0.0);
+        assert_eq!(stats.out_of_order, u64::MAX);
+    }
+
+    #[test]
+    fn test_measurements_calculate_udp_loss_zero() {
+        let m = Measurements::new();
+        let (lost, expected) = m.calculate_udp_loss();
+        assert_eq!(lost, 0);
+        assert_eq!(expected, 0);
+    }
+
+    #[test]
+    fn test_collector_ignore_initialization_packets() {
+        let collector = MeasurementsCollector::new();
+
+        // Sequence u64::MAX should be ignored
+        collector.record_udp_packet_received(u64::MAX, 1000, 1100);
+
+        let (lost, expected) = collector.calculate_udp_loss();
+        assert_eq!(expected, 0);
+        assert_eq!(lost, 0);
+    }
+
+    #[test]
+    fn test_collector_concurrent_updates() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let collector = Arc::new(MeasurementsCollector::new());
+        let mut handles = vec![];
+
+        // Spawn 10 threads, each recording 100 bytes
+        for stream_id in 0..10 {
+            let c = Arc::clone(&collector);
+            let handle = thread::spawn(move || {
+                for _ in 0..100 {
+                    c.record_bytes_sent(stream_id, 1);
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let m = collector.get();
+        // 10 streams * 100 bytes = 1000 total
+        assert_eq!(m.total_bytes_sent, 1000);
+    }
+
+    #[test]
+    fn test_tcp_stats_from_dto() {
+        let json = r#"{
+            "retransmits": 10,
+            "snd_cwnd": 32768,
+            "rtt": 1000,
+            "rttvar": null,
+            "pmtu": null
+        }"#;
+
+        let stats: TcpStats = serde_json::from_str(json).unwrap();
+        assert_eq!(stats.retransmits, 10);
+        assert_eq!(stats.snd_cwnd_opt(), Some(32768));
+        assert_eq!(stats.rtt_opt(), Some(1000));
+        assert_eq!(stats.rttvar_opt(), None);
+        assert_eq!(stats.pmtu_opt(), None);
+    }
+
+    #[test]
+    fn test_circular_buffer_serialization() {
+        let mut buffer = CircularIntervalBuffer::new();
+        buffer.push_back(IntervalStats {
+            start: Duration::from_secs(0),
+            end: Duration::from_secs(1),
+            bytes: 1024,
+            bits_per_second: 8192.0,
+            packets: 10,
+        });
+
+        let json = serde_json::to_string(&buffer).unwrap();
+        let deserialized: CircularIntervalBuffer = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.len(), 1);
+    }
+}
