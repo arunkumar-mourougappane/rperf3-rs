@@ -820,8 +820,13 @@ async fn send_udp_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
-    // Note: In UDP reverse mode, only the client prints interval reports.
-    // The server just tracks measurements for the final summary.
+    // Create async interval reporter
+    let (reporter, receiver) = IntervalReporter::new();
+    let reporter_task = tokio::spawn(run_reporter_task(
+        receiver,
+        config.json,
+        None, // Server doesn't have callbacks
+    ));
 
     // Bind to the server's configured port for UDP
     let bind_addr = format!("0.0.0.0:{}", config.port);
@@ -892,7 +897,7 @@ async fn send_udp_data(
                     }
                 }
 
-                // Track interval stats internally (no printing on server side for reverse mode)
+                // Report interval
                 if last_interval.elapsed() >= config.interval {
                     let elapsed = start.elapsed();
                     let interval_duration = last_interval.elapsed();
@@ -912,6 +917,21 @@ async fn send_udp_data(
                         packets: interval_packets,
                     });
 
+                    // Send to reporter task (async, non-blocking)
+                    reporter.report(IntervalReport {
+                        stream_id: DEFAULT_STREAM_ID,
+                        interval_start,
+                        interval_end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: Some(interval_packets),
+                        jitter_ms: None,
+                        lost_packets: None,
+                        lost_percent: None,
+                        retransmits: None,
+                        cwnd: None,
+                    });
+
                     interval_bytes = 0;
                     interval_packets = 0;
                     last_interval = Instant::now();
@@ -924,6 +944,10 @@ async fn send_udp_data(
         }
     }
 
+    // Signal reporter completion and wait for it to finish
+    reporter.complete();
+    let _ = reporter_task.await;
+
     measurements.set_duration(start.elapsed());
     Ok(())
 }
@@ -934,6 +958,14 @@ async fn receive_udp_data(
     config: &Config,
     buffer_pool: Arc<BufferPool>,
 ) -> Result<()> {
+    // Create async interval reporter
+    let (reporter, receiver) = IntervalReporter::new();
+    let reporter_task = tokio::spawn(run_reporter_task(
+        receiver,
+        config.json,
+        None, // Server doesn't have callbacks
+    ));
+
     // Bind UDP socket on the server port
     let bind_addr = format!("0.0.0.0:{}", config.port);
     let socket = UdpSocket::bind(&bind_addr).await?;
@@ -944,6 +976,9 @@ async fn receive_udp_data(
     info!("UDP server listening for packets on port {}", config.port);
 
     let start = Instant::now();
+    let mut last_interval = start;
+    let mut interval_bytes = 0u64;
+    let mut interval_packets = 0u64;
     let mut buf = buffer_pool.get();
 
     // Receive packets until duration expires or timeout
@@ -967,6 +1002,64 @@ async fn receive_udp_data(
                         header.timestamp_us,
                         recv_timestamp_us,
                     );
+
+                    interval_bytes += n as u64;
+                    interval_packets += 1;
+                }
+
+                // Report interval
+                if last_interval.elapsed() >= config.interval {
+                    let elapsed = start.elapsed();
+                    let interval_duration = last_interval.elapsed();
+                    let bps = (interval_bytes as f64 * 8.0) / interval_duration.as_secs_f64();
+
+                    let interval_start = if elapsed > interval_duration {
+                        elapsed - interval_duration
+                    } else {
+                        Duration::ZERO
+                    };
+
+                    // Get UDP stats from measurements
+                    let stats = measurements.get();
+                    let jitter = if stats.jitter_ms > 0.0 {
+                        Some(stats.jitter_ms)
+                    } else {
+                        None
+                    };
+                    let lost = stats.lost_packets;
+                    let total = stats.total_packets;
+                    let lost_percent = if total > 0 && lost > 0 {
+                        Some((lost as f64 / total as f64) * 100.0)
+                    } else {
+                        None
+                    };
+
+                    measurements.add_interval(IntervalStats {
+                        start: interval_start,
+                        end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: interval_packets,
+                    });
+
+                    // Send to reporter task (async, non-blocking)
+                    reporter.report(IntervalReport {
+                        stream_id: DEFAULT_STREAM_ID,
+                        interval_start,
+                        interval_end: elapsed,
+                        bytes: interval_bytes,
+                        bits_per_second: bps,
+                        packets: Some(interval_packets),
+                        jitter_ms: jitter,
+                        lost_packets: if lost > 0 { Some(lost) } else { None },
+                        lost_percent,
+                        retransmits: None,
+                        cwnd: None,
+                    });
+
+                    interval_bytes = 0;
+                    interval_packets = 0;
+                    last_interval = Instant::now();
                 }
             }
             Ok(Err(e)) => {
@@ -979,6 +1072,10 @@ async fn receive_udp_data(
             }
         }
     }
+
+    // Signal reporter completion and wait for it to finish
+    reporter.complete();
+    let _ = reporter_task.await;
 
     measurements.set_duration(start.elapsed());
     Ok(())
